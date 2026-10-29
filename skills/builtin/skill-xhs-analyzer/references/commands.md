@@ -16,7 +16,7 @@ redbook search "MCP Server" --page 2 --json       # 分页
 读笔记全文 —— 标题/正文/图片/点赞/评论数。接受完整 URL 或短 noteId（bare noteId 常返回 `{}`，需 xsec_token）。API 返回验证码时回退 HTML 抓取。
 
 ### `redbook comments <url>`
-获取评论，`--all` 拉全部页。`redbook comments "<url>" --all --json`
+获取评论，一次一页。`redbook comments "<url>" --json`（`--all` 被守卫拒绝）。
 
 ### `redbook user <userId|profileUrl>`
 创作者档案 —— 昵称/简介/粉丝数/笔记数/获赞。bare userId 返回 `code=-1` 时用含 `xsec_token` 的完整 profile URL，或 `--xsec-token <token> --xsec-source pc_search`。
@@ -27,10 +27,10 @@ redbook search "MCP Server" --page 2 --json       # 分页
 ### `redbook account-report <userId|profileUrl...>`
 批量汇总账号发帖与参与度。
 ```bash
-redbook account-report --file accounts.txt --month 2026-07 --json
-redbook account-report "<url1>" "<url2>" --max-pages 2 --json
+redbook account-report "<url>" --month 2026-07 --json
 ```
-选项：`--file`（换行分隔 ID/URL）· `--month YYYY-MM`（默认当月）· `--max-pages n`（默认 1）· `--all`（全页）· `--delay ms`（默认 3000）。KOS/KOC 报告用已知 ID，勿用关键词搜索。
+选项：`--month YYYY-MM`（默认当月）。守卫拒绝 `--file`、多个账号、`--max-pages` 大于 1 和 `--all`。KOS/KOC 报告用已知 ID，勿用关键词搜索。
+每账号的 `topByLikesPlusFavourites` = 点赞 + 收藏最高的笔记（原 `topByLikes`，已改名）；`topByEngagement`（点赞 + 评论 + 收藏 + 分享）是另一个单独的量，不变。
 
 ### `redbook feed`
 浏览推荐流。`redbook feed --json`
@@ -41,18 +41,20 @@ redbook account-report "<url1>" "<url2>" --max-pages 2 --json
 ### `redbook favorites [userId]`
 列出收藏笔记，默认当前登录用户。`--all` 拉全页。他人收藏仅在未设私密时可见。
 
-### `redbook analyze-viral <url>`
+### `redbook analyze-viral <url>`（守卫拒绝）
+程序内部一次连取笔记、评论多页、作者笔记和档案，不留间隔，守卫拒绝。下面是程序本身的说明。
 分析爆款原因，返回确定性 0–100 分。`--comment-pages n`（默认 3，最大 10）。
 JSON：`{ note, score, hook, content, visual, engagement, comments, relative, fetchedAt }`
 - `score.overall` = hook(20)+engagement(20)+relative(20)+content(20)+comments(20)
-- `hook.hookPatterns[]` · `engagement`（点赞/评论/收藏/分享 + 三比率）· `relative.viralMultiplier`（点赞/作者中位）· `relative.isOutlier`（>3）· `comments.themes[]`
+- `hook.hookPatterns[]` · `engagement`（点赞/评论/收藏/分享 + 三比率）· `relative.viralMultiplier`（点赞/作者中位，两边都只比点赞：`relative.measure` = `"likes"`；`score.breakdown.engagement` 档位按点赞 + 收藏）· `relative.isOutlier`（>3）· `comments.themes[]`
 
-### `redbook viral-template <url> [url2] [url3]`
+### `redbook viral-template <url> [url2] [url3]`（守卫拒绝）
+同上，守卫拒绝。下面是程序本身的说明。
 从 1-3 篇爆款提取可复用模板。`--comment-pages n`（默认 3，最大 10）。
 JSON：`{ dominantHookPatterns, titleStructure, bodyStructure, engagementProfile, audienceSignals, sourceNotes, generatedAt }`
 
 ### `redbook health`
-检测笔记隐藏限流 level（见 modules.md Module M）。`redbook health --all --json`
+检测笔记隐藏限流 level（见 modules.md Module M）。`redbook health --json`（`--all` 被守卫拒绝）
 
 ### `redbook whoami`
 检查连接状态，验证 cookie 并显示登录用户。
@@ -69,13 +71,7 @@ markdown → styled PNG 卡片，用本机 Chrome。
 选项：`--style purple/xiaohongshu(默认)/mint/sunset/ocean/elegant/dark` · `--pagination auto(默认)/separator` · `--output-dir` · `--width`(1080) · `--height`(1440) · `--dpr`(2)。需 `puppeteer-core` + `marked`；Chrome 非标准位置设 `CHROME_PATH`。
 
 ### `redbook auth`
-为 OpenClaw/云/CI 管理保存的 cookie。
-```bash
-redbook auth export                                  # 从本地浏览器导出到 ~/.redbook/cookies.json
-redbook auth save --cookie-string "a1=...; web_session=..."
-redbook auth path / inspect --json / clear
-```
-cookie 解析顺序：`--cookie-string` → `REDBOOK_COOKIE_STRING` → `REDBOOK_COOKIE_FILE` → `~/.redbook/cookies.json` → 浏览器抽取。cookie 文件是明文凭证（`0600`），勿提交/记录。
+上游用它把 cookie 存成明文文件。**本环境禁用**：守卫拒绝 `auth`、`--cookie-string`、`--cookie-source`、`--chrome-profile`；cookie 每次现取、只在内存（见 SKILL.md「运行环境」）。`favorites`、`boards`、`board` 同样被拒绝。
 
 ## 全局选项（所有命令）
 - `--cookie-source chrome(默认)/safari/firefox`

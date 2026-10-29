@@ -57,7 +57,7 @@
 
 ## 四、爆款封面文案模板
 
-> 下面是**封面文案结构**（钩子怎么写）。封面**视觉**一律走 card-design 的封面骨架（大标题细字重 + 钩子副标 + kicker/信息行），用字号层级和留白营造张力，**不靠大 emoji / 手写感**。
+> 下面是**封面文案结构**（钩子怎么写）。封面**视觉**一律走 card-design 的封面骨架（大标题细字重 + 钩子副标 + kicker/信息行），用字号层级和留白营造张力，**不靠大 emoji / 手写感**（这一句只管 `html_card` 的 HTML 文字卡）。`photo_scene` 照片场景帖的封面字不归这一句管：字体和样式按 [xhs-reference-visual 的字体和样式 A/B/C](../../xhs-reference-visual/references/photo-scene-lettering-picks.md) 由负责人选，允许手写字，不用纯粗黑笔画（负责人，2026-10-28：）。
 
 ### 模板 A：提问式封面
 ```
@@ -110,7 +110,7 @@
 
 ## 六、视觉风格
 
-**卡片视觉完全交给 [card-design](../../card-design/SKILL.md) 设计系统**，本文件不再自定义视觉规则（旧版"纯色 + 大 emoji + 手写感 + 看起来不专业 + 文生图 prompt"已废弃——那套糙美学与高级感冲突、执行效果差）。
+**卡片视觉完全交给 [card-design](../../card-design/SKILL.md) 设计系统**，本文件不再自定义视觉规则（`html_card` 路径的旧版"纯色 + 大 emoji + 手写感 + 看起来不专业 + 文生图 prompt"已废弃——那套糙美学与高级感冲突、执行效果差）。`photo_scene` 照片场景帖不在此列：它的手写标题没有被废弃，字体和样式见 [xhs-reference-visual 的字体和样式 A/B/C](../../xhs-reference-visual/references/photo-scene-lettering-picks.md)。
 
 - 出卡时走 `html_card` 路径：读 card-design → **选一个风格**（想要温柔/生活感就用手账贴纸 / 奶油温柔 / 植物清新；知识/工具用瑞士 / 杂志）→ 锁 spec → 写 HTML → `render_card.py` 渲染 → `card_audit.py` 硬门禁。
 - 「素人 / 真实感」诉求通过 card-design 的**风格选择**表达（手账/奶油仍是高质量 HTML 渲染），**不是**靠大 emoji 和糙排版。

@@ -536,6 +536,8 @@ textarea.field { resize: vertical; min-height: 90px; }
 .question-card__custom button:disabled { opacity: .5; cursor: default; }
 .question-card__hint { color: var(--text-secondary, #666); font-size: 12px; }
 .question-card__error { color: #c0392b; }
+.question-card__timer { color: var(--text-secondary, #666); font-size: 12px; justify-self: end; }
+.question-card__expired { color: #b9770e; font-size: 13px; }
 .question-card__item { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; }
 .question-card__divider { height: 1px; background: var(--border, rgba(0,0,0,.08)); margin: 10px 0; }
 .question-card__actions { display: flex; justify-content: flex-end; }

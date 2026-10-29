@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ChatQuestion, ChatQuestionItem } from '../lib/api';
 import { answerQuestion } from '../lib/api';
 
@@ -14,7 +14,41 @@ import { answerQuestion } from '../lib/api';
  * （gateway 对 multiSelect=false 的多值直接报 "does not allow multiple answers"，
  * 前端只按数据渲染，不绕过校验）。
  */
-function QuestionCard({ question, onAnswered }: { question: ChatQuestion; onAnswered: () => void }) {
+/** 题已关闭：被标为过期，或已过截止时间。 */
+export function isExpired(q: ChatQuestion, nowMs: number): boolean {
+  return q.expired === true || (q.expiresAtMs != null && nowMs >= q.expiresAtMs);
+}
+
+/** 活题的剩余时间，如「剩余 9:41」。没有截止时间则不显示。 */
+export function timeLeftText(q: ChatQuestion, nowMs: number): string {
+  if (q.expiresAtMs == null) return '';
+  const s = Math.max(0, Math.ceil((q.expiresAtMs - nowMs) / 1000));
+  return `剩余 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** 过期题的补答：作为普通聊天消息发给 AI，写明回答的是哪道题。 */
+export function lateAnswerMessage(q: ChatQuestion, answers: Record<string, string[]>): string {
+  const lines = q.questions.map((it) => `「${it.question}」→ 我选：${(answers[it.questionId] || []).join('、')}`);
+  return `回答你之前已过期的提问：\n${lines.join('\n')}`;
+}
+
+function useNow(fixed: number | undefined, ticking: boolean): number {
+  const [now, setNow] = useState(() => fixed ?? Date.now());
+  useEffect(() => {
+    if (fixed != null || !ticking) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [fixed, ticking]);
+  return fixed ?? now;
+}
+
+type LateAnswer = (q: ChatQuestion, answers: Record<string, string[]>) => void;
+
+function QuestionCard({ question, onAnswered, onLateAnswer, nowMs }: {
+  question: ChatQuestion; onAnswered: () => void; onLateAnswer?: LateAnswer; nowMs?: number;
+}) {
+  const now = useNow(nowMs, question.expiresAtMs != null && !question.expired);
+  const expired = isExpired(question, now);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Record<string, string[]>>({});
@@ -55,13 +89,16 @@ function QuestionCard({ question, onAnswered }: { question: ChatQuestion; onAnsw
   };
 
   const submit = async () => {
-    if (busy || !allAnswered) return;
-    setBusy(true); setError('');
+    if (busy || !allAnswered || question.waiting) return;
     const answers: Record<string, string[]> = {};
     for (const it of items) answers[it.questionId] = valsOf(it);
+    // 已过期的题不再问网关：答案直接作为聊天消息发给 AI
+    if (expired && onLateAnswer) { onLateAnswer(question, answers); return; }
+    setBusy(true); setError('');
     try {
       const res = await answerQuestion({ questionId: question.id, answers });
-      if (!res.ok) setError(res.error || '提交失败');
+      if (res.expired && onLateAnswer) onLateAnswer(question, answers);
+      else if (!res.ok) setError(res.error || '提交失败');
       else onAnswered();
     } catch (e) {
       setError(String(e));
@@ -74,6 +111,9 @@ function QuestionCard({ question, onAnswered }: { question: ChatQuestion; onAnsw
     <div className="message-row assistant">
       <div className="msg-col assistant" style={{ maxWidth: '80%' }}>
         <div className="question-card">
+          {!expired && question.expiresAtMs != null && (
+            <div className="question-card__timer">{timeLeftText(question, now)}</div>
+          )}
           {items.map((it, idx) => {
             const options: { label: string; description?: string }[] = it.options || [];
             const vals = valsOf(it);
@@ -147,6 +187,14 @@ function QuestionCard({ question, onAnswered }: { question: ChatQuestion; onAnsw
               </div>
             )
           )}
+          {expired && !question.waiting && (
+            <div className="question-card__expired">
+              这道题已过期，AI 已不再等待。选好后点提交，你的选择会作为一条普通聊天消息发给 AI。
+            </div>
+          )}
+          {question.waiting && (
+            <div className="question-card__hint">AI 这一轮还没结束，等它结束后会自动把你的选择发出去…</div>
+          )}
           {busy && <div className="question-card__hint">已提交，Agent 继续处理中…</div>}
           {error && <div className="question-card__hint question-card__error">{error}</div>}
         </div>
@@ -156,7 +204,9 @@ function QuestionCard({ question, onAnswered }: { question: ChatQuestion; onAnsw
 }
 
 /** 流式中的 ask_user 问答题列表（一次性卡片，答完即从当前流移除）。 */
-export default function QuestionCards({ questions, onDone }: { questions: ChatQuestion[]; onDone?: (questionId: string) => void }) {
+export default function QuestionCards({ questions, onDone, onLateAnswer, nowMs }: {
+  questions: ChatQuestion[]; onDone?: (questionId: string) => void; onLateAnswer?: LateAnswer; nowMs?: number;
+}) {
   const [answered, setAnswered] = useState<Record<string, boolean>>({});
   const visible = useMemo(
     () => questions.filter((q) => !answered[q.id]),
@@ -166,7 +216,7 @@ export default function QuestionCards({ questions, onDone }: { questions: ChatQu
   return (
     <>
       {visible.map((q) => (
-        <QuestionCard key={q.id} question={q} onAnswered={() => {
+        <QuestionCard key={q.id} question={q} onLateAnswer={onLateAnswer} nowMs={nowMs} onAnswered={() => {
           setAnswered((a) => ({ ...a, [q.id]: true }));
           onDone?.(q.id);   // 通知 App：此题已答，重放/恢复不再出现
         }} />

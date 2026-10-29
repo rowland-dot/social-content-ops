@@ -59,6 +59,35 @@ def test_sdk_resources_resolve_to_vendor_package_root(tmp_path):
     assert validate_document(document, tmp_path) == ([], 1)
 
 
+def test_a_whole_team_package_vendored_without_its_own_skill_file_is_not_checked(tmp_path):
+    # The team's text points into another team package (here a prompt skill that is not at this
+    # root); it is kept byte for byte, so it cannot be corrected and must not fail the check.
+    write_file(tmp_path, "skills/builtin/example/SKILL.md")
+    document = write_file(
+        tmp_path, "skills/builtin/example/references/vendor/standards/v1/REVIEW.md",
+        "`references/user-rules.md`\n",
+    )
+    assert validate_document(document, tmp_path) == ([], 0)
+
+
+def test_libtv_vendored_text_is_not_checked_but_its_wrapper_page_still_is(tmp_path):
+    # LibTV's copied files are kept byte for byte and name paths on LibTV's side (its example
+    # inputs, its own installer), so they cannot be corrected here. Easel's wrapper SKILL.md one
+    # level up is Easel's own text and stays checked.
+    write_file(tmp_path, "skills/builtin/example/references/vendor/SKILL.md")
+    vendored = write_file(
+        tmp_path, "skills/builtin/example/references/vendor/commands/run.md",
+        "`references/user-rules.md` `./refs/ref.png`\n",
+    )
+    wrapper = write_file(
+        tmp_path, "skills/builtin/example/SKILL.md", "`references/user-rules.md`\n",
+    )
+    assert validate_document(vendored, tmp_path) == ([], 0)
+    issues, checked = validate_document(wrapper, tmp_path)
+    assert checked == 1
+    assert [issue.reference for issue in issues] == ["references/user-rules.md"]
+
+
 def test_old_repository_paths_are_rejected_but_native_openclaw_paths_are_valid(tmp_path):
     document = write_file(
         tmp_path, "agents/workspace/AGENTS.md",

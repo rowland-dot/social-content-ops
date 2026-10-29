@@ -106,7 +106,8 @@ def load_env_file(env_file: Path | None) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if key and key not in os.environ:
+        # 变量存在但为空/纯空白，等同未设置：网关会把启动时 .env 里的空键原样传给每个 agent shell。
+        if key and not os.environ.get(key, "").strip():
             os.environ[key] = strip_env_value(value)
 
 
@@ -302,6 +303,11 @@ def cmd_enroll(a) -> int:
         vid = enroll_minimax(a)
     elif provider == "dashscope":
         vid = enroll_dashscope(a)
+    elif provider == "chatgpt":
+        import chatgpt_voice as cv
+        fail("chatgpt 路线（ChatGPT 订阅的「朗读」）不能克隆声音，只有朗读自带的声线（ChatGPT 设置页上的名字："
+             f"{'、'.join(cv.VOICES)}）；直接 clone --voice-id Cove 即可。")
+        return 2
     else:
         fail(f"{provider} 无需单独 enroll：fish-audio 用 model_id/参考音频，"
              f"openai-compatible 用预置 voice 名。直接 clone 即可。")
@@ -419,6 +425,17 @@ def clone_openai(a, out: Path) -> Path:
     return out
 
 
+def clone_chatgpt(a, out: Path) -> Path:
+    """ChatGPT 订阅的「朗读」（无 key，不能克隆）：--voice-id 是 ChatGPT 设置页上的声线名（Sol、Cove…共九个，任意大小写）
+    或朗读用的 id，缺省 Cove；不认识的名字在碰浏览器之前就报错。"""
+    import chatgpt_voice as cv
+    try:
+        cv.synthesize(a.text, out, a.voice_id)
+    except cv.ChatGPTVoiceError as exc:
+        fail(str(exc))
+    return out
+
+
 def _pcm_to_wav_bytes(pcm: bytes, rate: int = 24000, channels: int = 1, width: int = 2) -> bytes:
     """裸 PCM（Gemini 输出 24k/mono/16bit）包成 WAV 字节（纯 stdlib）。"""
     import io
@@ -524,7 +541,7 @@ def cmd_clone(a) -> int:
     out = Path(a.output).expanduser().resolve()
     dispatch = {"minimax": clone_minimax, "dashscope": clone_dashscope,
                 "fish-audio": clone_fish, "openai-compatible": clone_openai,
-                "gemini": clone_gemini}
+                "gemini": clone_gemini, "chatgpt": clone_chatgpt}
     result = dispatch[provider](a, out)
     kb = result.stat().st_size / 1024 if result.is_file() else 0
     print(f"✅ {result} ({kb:.0f} KB) [{provider}]")
@@ -533,6 +550,15 @@ def cmd_clone(a) -> int:
 
 def cmd_check(a) -> int:
     provider = resolve_provider(a.provider)
+    if provider == "chatgpt":  # 没有 key 可校验：看专用浏览器在线且已登录（不发消息）
+        import chatgpt_voice as cv
+        try:
+            cv.check()
+        except cv.ChatGPTVoiceError as exc:
+            print(f"provider: chatgpt\n❌ {exc}", file=sys.stderr)
+            return 3
+        print("provider: chatgpt\n✅ 专用浏览器在线，ChatGPT 已登录，可用。")
+        return 0
     missing = [e for e in REQUIRED_ENV[provider] if not env_lookup(e)]
     print(f"provider: {provider}")
     for e in REQUIRED_ENV[provider]:
@@ -554,6 +580,8 @@ def cmd_selftest(_a) -> int:
         pass
     # 每个 provider 的 check 在无 env 时应报缺失（返回 3）
     for p in PROVIDERS:
+        if not REQUIRED_ENV[p]:
+            continue  # 没有 key 的 provider（chatgpt）：check 看的是在线的浏览器，不属离线自检
         for e in REQUIRED_ENV[p]:
             os.environ.pop(e, None)
             for alias in ENV_ALIASES.get(e, ()):

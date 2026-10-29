@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from easel.persona import external_profile_dirs
+
 from .base import HarnessError, RunRequest
 
 
@@ -17,6 +19,15 @@ def workspace_documents(root: Path) -> list[Path]:
     if not documents or not (source / "AGENTS.md").is_file():
         raise HarnessError("缺少 agents/workspace/AGENTS.md，请检查 Easel 安装")
     return documents
+
+
+def _mapped_profiles(request: RunRequest) -> str:
+    mapped = external_profile_dirs(request.env)
+    if not mapped:
+        return ""
+    folders = "；".join(f"画像「{name}」位于 {folder}" for name, folder in mapped.items())
+    return ("以下画像不在项目 profiles 目录里：" + folders + "。这些实际文件夹覆盖技能与说明里的 "
+            "profiles/<画像>/ 路径：读写这些画像的任何文件（包括 memory.md）都用实际文件夹。")
 
 
 def harness_instructions(request: RunRequest) -> str:
@@ -36,6 +47,7 @@ def harness_instructions(request: RunRequest) -> str:
         f"Python 优先使用 {python}；产物保存到 {root / 'outputs'}。"
         f"账号画像位于 {root / 'profiles'}；直接使用该实际路径，"
         "easel-profiles/ 仅在另有工作区链接时可用，不是项目根中的必需目录。"
+        f"{_mapped_profiles(request)}"
         "遵循用户选择的画像和每轮技能提醒。配置检查只使用项目 .env 的脱敏结果，不回显凭证。"
         "公开发布、修改账号状态和其它不可逆操作必须先取得明确同意。"
         "不要泄露凭证、私有配置或内部地址。额外工具权限必须由用户确认，不得绕过权限限制。"

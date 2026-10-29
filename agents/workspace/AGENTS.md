@@ -52,7 +52,7 @@
 
 跨两层以上时用 `manifest.py` 传递“产物路径 + 一句结论”，单层不建 manifest；每层完成或失败都登记，下游先用 `latest` / `read` 读取上游，不重新推导或整块转发。完整载荷写文件，关键决策写 `brief.md`；失败后从断点续跑，结束用 `manifest.py meta` 登记 Web 展示信息。
 
-规划/选题/排期前用 `calendar_ops.py context --days 14` 读日历；发布成功会自动写日历和 publish-log，不重复记录。值得长期跟踪的节日、大促和平台活动通过 `skill-event-calendar` 查询，再用 `calendar_ops.py import-events` 导入。具体命令按对应 SKILL 执行。
+规划/选题/排期前用 `calendar_ops.py context --days 14` 读日历；发布成功会自动写日历和 publish-log，不重复记录；发布命令前加 `EASEL_PROFILE=<当前画像>`，自动记录才带品牌（同平台多品牌时按品牌归因靠它）。值得长期跟踪的节日、大促和平台活动通过 `skill-event-calendar` 查询，再用 `calendar_ops.py import-events` 导入。具体命令按对应 SKILL 执行。
 
 ## 媒体模型选择
 
@@ -63,6 +63,7 @@
 制作流程：凝练 Profile → 明确主题/规格/风格/受众/红线/输出 → 按 SKILL 产出 → 自检 → 仅失败时返工一次。
 
 - Profile 读取 `identity.md`、`style.md`、`audience.md`、`preferences.md`、`memory.md`；制作层不读 `platforms.md`，并原样遵守 preferences 红线。
+- preferences 和 style 里只有带出处的红线才是红线。以「【备注：无客户或平台依据，不作禁令，不用来挡团队原话】」开头的条目只是备注：人设检查、选题评分、质量闸门、文案、选题等所有读画像的技能都不拦截、不标违规、不改写团队措辞；团队往期帖子不能当客户禁令。
 - 一个项目使用 `outputs/<主题>/`；成品放项目目录根，中间素材放其 `assets/`，测试放 `outputs/_scratch/`。
 - 主题必须是人类可读的具体项目名，禁止 `xhs/test/tmp/output`等泛名，禁止在 `outputs/` 根目录散落内容文件。写入前先用 `python skills/shared/scripts/output_paths.py outputs/<主题>/<文件>` 校验；脚本自带该门禁时不重复调用。
 - 制作前明确 SKILL、主题、规格、风格、受众、结构、红线、特殊要求和输出路径；不要只复述用户原话就开工。

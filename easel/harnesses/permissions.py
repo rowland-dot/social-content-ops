@@ -5,6 +5,8 @@ import re
 import shlex
 from pathlib import Path
 
+from easel.persona import external_profile_dirs
+
 from .base import RunRequest
 
 
@@ -24,8 +26,10 @@ def can_auto_approve(method: str, params: dict, request: RunRequest) -> bool:
         return False
     if method == "item/fileChange/requestApproval":
         root = params.get("grantRoot")
-        return (request.sandbox == "workspace-write" and isinstance(root, str)
-                and bool(root) and _inside_workspace(root, request.cwd))
+        # The project root plus any profile folder mapped outside it (EASEL_PROFILE_DIRS), nothing else.
+        return (request.sandbox == "workspace-write" and isinstance(root, str) and bool(root)
+                and any(_inside_workspace(root, folder)
+                        for folder in (request.cwd, *external_profile_dirs(request.env).values())))
     if method != "item/commandExecution/requestApproval" or params.get("additionalPermissions"):
         return False
     decisions = params.get("availableDecisions")

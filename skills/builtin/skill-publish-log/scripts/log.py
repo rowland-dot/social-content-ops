@@ -192,8 +192,8 @@ def cmd_stat(args) -> None:
     # 分组 × 互动综合分均值
     group_score = ss.group_aggregate(
         entries, key_fn,
-        lambda e: ss.engagement_score(**{m: e.get("initial_metrics", {}).get(m)
-                                         for m in METRIC_KEYS}),
+        lambda e: ss.engagement_score_if_any(**{m: e.get("initial_metrics", {}).get(m)
+                                                for m in METRIC_KEYS}),
         agg="mean")
 
     result = {

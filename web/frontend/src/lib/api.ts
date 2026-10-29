@@ -346,17 +346,19 @@ export interface ChatQuestionItem {
 export interface ChatQuestion {
   id: string;              // gateway question record id (ask_...)
   questions: ChatQuestionItem[];
-  expiresAtMs?: number;
+  expiresAtMs?: number;    // when the question really closes (the earlier of gateway expiry and hook cancel)
+  expired?: boolean;       // closed unanswered; the box stays, a pick goes out as a chat message
+  waiting?: boolean;       // a pick on an expired box is held until the chat can send again
 }
 export async function answerQuestion(
   payload: { questionId: string; answers: Record<string, string[]>; resolvedBy?: string },
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; expired?: boolean }> {
   const res = await fetch(`${BASE}/api/chat/question/answer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
-  return { ok: data.ok === true, error: data.error };
+  const data = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; expired?: boolean };
+  return { ok: data.ok === true, error: data.error, expired: data.expired === true };
 }
 
 /** 批量查 question 状态：过滤重放中已解决/已过期的旧题。 */
@@ -620,6 +622,7 @@ export function streamChat(
   attachments: UploadedFile[] = [],
   onQuestion?: (q: ChatQuestion) => void,
   onHeartbeat?: (note: string) => void,
+  onQuestionClosed?: (questionId: string) => void,
 ): AbortController {
   const controller = new AbortController();
   let lastEventId = 0;
@@ -661,6 +664,11 @@ export function streamChat(
           try {
             const q = JSON.parse(data) as ChatQuestion;
             if (q && typeof q === 'object' && Array.isArray(q.questions)) onQuestion(q);
+          } catch { /* 解析失败忽略 */ }
+        } else if (currentEvent === 'question_closed' && onQuestionClosed) {
+          try {
+            const q = JSON.parse(data) as { id?: string };
+            if (q && typeof q.id === 'string') onQuestionClosed(q.id);
           } catch { /* 解析失败忽略 */ }
         } else if (currentEvent === 'heartbeat') {
           // 防呆心跳：独立于 activity/thinking，仅作「未卡住」提示，不覆盖真实状态。

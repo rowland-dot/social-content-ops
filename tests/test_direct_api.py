@@ -449,6 +449,10 @@ def test_doctor_recognizes_local_openclaw_backend(tmp_path, monkeypatch):
     for key in SETTINGS:
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(doctor, "PROJECT_ROOT", tmp_path)
+    # Read the OpenClaw config from an empty folder, not this machine's live one.
+    state_dir = tmp_path / "openclaw-state"
+    state_dir.mkdir()
+    monkeypatch.setenv("EASEL_OPENCLAW_STATE_DIR", str(state_dir))
     (tmp_path / ".env").write_text("\n".join(
         f"{key}={value}" for key, value in SETTINGS.items() if key != "EASEL_DIRECT_API_KEY"))
     assert doctor._env_key_valid()

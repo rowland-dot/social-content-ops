@@ -130,7 +130,7 @@ MODEL_GROUPS: dict[str, dict[str, Any]] = {
         "label": "云端语音 / 声音克隆",
         "settings": [
             _key("VOICE_PROVIDER", "默认语音 provider", required=False, secret=False,
-                 choices=("dashscope", "minimax", "fish-audio", "openai-compatible", "gemini")),
+                 choices=("dashscope", "minimax", "fish-audio", "openai-compatible", "gemini", "chatgpt")),
             _key("VOICE_NARRATOR_VOICE_ID", "默认旁白 voice-id", required=False, secret=False),
         ],
         "providers": [
@@ -176,6 +176,11 @@ MODEL_GROUPS: dict[str, dict[str, Any]] = {
                     _key("GEMINI_BASE_URL", "根地址", required=False, secret=False),
                     _key("GEMINI_TTS_RATE", "采样率", required=False, secret=False),
                 ],
+            },
+            {
+                # 走负责人的 ChatGPT 订阅（专用 Chrome 里已登录的 ChatGPT 网页「朗读」），没有 key。
+                # keyless：无 key 可校验，只有被选为 VOICE_PROVIDER 才算已配置。
+                "id": "chatgpt", "name": "ChatGPT 订阅（朗读，无 key）", "keyless": True, "keys": [],
             },
         ],
     },
@@ -244,7 +249,14 @@ def _configured_value(key: dict[str, Any], env: dict[str, str]) -> str:
 def configured_providers(group: str, env: dict[str, str]) -> list[dict[str, Any]]:
     """Return usable providers and non-secret model names without exposing credentials."""
     configured = []
-    for provider in MODEL_GROUPS[group]["providers"]:
+    spec = MODEL_GROUPS[group]
+    chooser = next((key for key in spec.get("settings", []) if key["env"].endswith("_PROVIDER")), None)
+    chosen = _configured_value(chooser, env) if chooser else ""
+    for provider in spec["providers"]:
+        if provider.get("keyless"):
+            # nothing to check a key against: it is configured exactly when it is the chosen provider
+            if provider["id"] != chosen:
+                continue
         required = [key for key in provider["keys"] if key["required"]]
         if not all(_configured_value(key, env) for key in required):
             continue

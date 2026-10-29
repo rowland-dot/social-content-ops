@@ -51,9 +51,25 @@ def resource_root(document: Path, root: Path) -> Path:
     for parent in document.parents:
         if parent == root:
             break
+        # A package vendored as vendor/<name>/ is its own root.
         if parent.parent.name == "vendor" or (parent / "SKILL.md").is_file():
             return parent
     return root
+
+
+def is_vendored_package_text(document: Path) -> bool:
+    """Anything kept whole under a skill's `references/vendor/` folder.
+
+    It is the vendor's text (the team's package, or LibTV's own files), byte for byte. Its
+    references point into the vendor's own folders (sometimes into a package that was never
+    vendored, or at files the user supplies), so it cannot be corrected here. The team's relative
+    links are checked by the skill's own test instead. Easel's own wrapper page one level up
+    (the skill's `SKILL.md`) is not under `references/vendor/` and stays checked.
+    """
+    return any(
+        parent.name == "vendor" and parent.parent.name == "references"
+        for parent in document.parents
+    )
 
 
 def literal_path(value: str) -> str | None:
@@ -90,6 +106,8 @@ def without_fences(text: str) -> str:
 
 
 def validate_document(document: Path, root: Path) -> tuple[list[PathIssue], int]:
+    if is_vendored_package_text(document):
+        return [], 0
     text = document.read_text(encoding="utf-8-sig")
     visible = without_fences(text)
     link_text = INLINE_RE.sub(

@@ -13,6 +13,7 @@ argparse 顶层 + 子命令，每个子命令都能 `-h`：
     pad        补边到目标宽高比（1:1 / 9:16 / 16:9 ...，社媒适配）
     convert    格式转换（png/jpg/webp）
     compress   压缩到指定质量或目标文件大小上限（jpg/webp 质量循环逼近）
+    place      把抠好的 RGBA 图层按比例位置和宽度放进场景，并按轮廓画柔和接触阴影
     watermark  文字水印（位置/透明度/字号）或图片水印（右下角等）
     round      圆角处理（输出带透明通道 png）
     collage    多图拼接（横向/纵向/网格 NxM）
@@ -333,6 +334,47 @@ def cmd_watermark(args) -> int:
     return 0
 
 
+def cmd_place(args) -> int:
+    """图层只做等比缩放和平移，图层自己的像素不改色；阴影由图层轮廓（alpha）生成，垫在图层下面。
+    x、y 是图层中心在场景里的比例位置，width 是图层宽占场景宽的比例；阴影偏移和模糊以图层宽为单位。"""
+    for name, v, lo in (("x", args.x, 0.0), ("y", args.y, 0.0), ("width", args.width, 1e-6)):
+        if not lo <= v <= 1.0:
+            _die(f"--{name} 要在 {lo:g} 到 1 之间（场景的比例），收到 {v}")
+    if not 0.0 <= args.shadow_opacity <= 1.0:
+        _die(f"--shadow-opacity 要在 0 到 1 之间，收到 {args.shadow_opacity}")
+    scene = _open(args.scene).convert("RGBA")
+    layer = _open(args.layer).convert("RGBA")
+    lw = max(1, round(args.width * scene.width))
+    scale = lw / layer.width
+    if lw != layer.width:
+        layer = layer.resize((lw, max(1, round(layer.height * scale))), Image.LANCZOS)
+    left = round(args.x * scene.width - layer.width / 2)
+    top = round(args.y * scene.height - layer.height / 2)
+    if args.shadow_opacity > 0:
+        from PIL import ImageFilter
+        alpha = layer.split()[-1].point(lambda p: round(p * args.shadow_opacity))
+        shadow = Image.new("RGBA", scene.size, (0, 0, 0, 0))
+        sx = left + round(args.shadow_dx * layer.width)
+        sy = top + round(args.shadow_dy * layer.width)
+        shadow.paste(Image.new("RGBA", layer.size, (0, 0, 0, 255)), (sx, sy), alpha)
+        blur = args.shadow_blur * layer.width
+        if blur > 0:
+            shadow = shadow.filter(ImageFilter.GaussianBlur(blur))
+        scene = Image.alpha_composite(scene, shadow)
+    top_layer = Image.new("RGBA", scene.size, (0, 0, 0, 0))
+    top_layer.paste(layer, (left, top))
+    _save(Image.alpha_composite(scene, top_layer), args.output)
+    if args.record:
+        _ensure_parent(args.record)
+        Path(args.record).write_text(json.dumps({
+            "layer": args.layer, "scene": args.scene, "x": args.x, "y": args.y, "width": args.width,
+            "scale": round(scale, 6),
+            "shadow": {"dx": args.shadow_dx, "dy": args.shadow_dy, "blur": args.shadow_blur,
+                       "opacity": args.shadow_opacity}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    _report(args.output)
+    return 0
+
+
 def cmd_round(args) -> int:
     img = _open(args.input).convert("RGBA")
     w, h = img.size
@@ -615,6 +657,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--scale", type=float, default=1.0, help="图片水印缩放倍数")
     _q(p)
     p.set_defaults(func=cmd_watermark)
+
+    # place
+    p = sub.add_parser("place", help="把抠好的 RGBA 图层按比例位置和宽度放进场景，并画接触阴影")
+    p.add_argument("--scene", required=True, help="场景图")
+    p.add_argument("--layer", required=True, help="抠好的 RGBA 图层（只等比缩放和平移，不改色）")
+    p.add_argument("--x", type=float, required=True, help="图层中心的横向位置，占场景宽的比例 0-1")
+    p.add_argument("--y", type=float, required=True, help="图层中心的纵向位置，占场景高的比例 0-1")
+    p.add_argument("--width", type=float, required=True, help="图层宽占场景宽的比例 0-1")
+    p.add_argument("--shadow-dx", type=float, default=0.04, help="阴影横向偏移（图层宽的倍数，正为向右，朝光的反面）")
+    p.add_argument("--shadow-dy", type=float, default=0.03, help="阴影纵向偏移（图层宽的倍数，正为向下）")
+    p.add_argument("--shadow-blur", type=float, default=0.03, help="阴影模糊半径（图层宽的倍数）")
+    p.add_argument("--shadow-opacity", type=float, default=0.35, help="阴影浓度 0-1，0 为不画阴影")
+    p.add_argument("--record", help="把用到的图层、位置、缩放、阴影设置写成 json（以后原样再放一次）")
+    p.add_argument("-o", "--output", required=True)
+    p.set_defaults(func=cmd_place)
 
     # round
     p = sub.add_parser("round", help="圆角处理（输出透明 png）")

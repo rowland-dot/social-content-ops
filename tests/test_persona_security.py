@@ -22,6 +22,9 @@ def profiles(tmp_path, monkeypatch):
     (tmp_path / "REVIEW_MARKER.md").write_text("outside-profile-marker", encoding="utf-8")
     monkeypatch.setattr(persona, "PROFILES_DIR", directory)
     monkeypatch.setattr(web, "PROFILES_DIR", directory)
+    # Keep these tests independent of any profile mapped outside the folder on this machine.
+    monkeypatch.setattr(persona, "ENV_FILE", tmp_path / "no-such.env", raising=False)
+    monkeypatch.delenv("EASEL_PROFILE_DIRS", raising=False)
     return directory
 
 

@@ -29,6 +29,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "shared" / "scripts"))
+import codex_image  # noqa: E402
+
 
 ENV_BASE_URL = "IMG_BASE_URL"
 ENV_MODEL = "IMG_MODEL"
@@ -382,6 +385,34 @@ def _save_async_images(task_data: dict[str, Any], output_dir: Path, fmt: str) ->
     return paths
 
 
+# ── Codex 订阅路线（IMG_PROVIDER=codex）：不要 key、不按次计费 ──────────
+
+def run_codex(args: argparse.Namespace, prompt: str) -> None:
+    if args.format != "png":
+        fail("Codex 订阅路线只产出 PNG，请去掉 --format 或用 --format png。")
+    try:
+        codex_image.require_count(args.n)
+        print(f"[codex] 经 Codex 订阅出图，共 {args.n} 张（每张约 1~3 分钟）...", file=sys.stderr)
+        blobs = [codex_image.generate_png(
+                     prompt, images=[args.image] if args.image else None,
+                     ratio=codex_image.ratio_from_size(args.size))
+                 for _ in range(args.n)]
+    except codex_image.CodexImageError as exc:
+        fail(str(exc))
+        return
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    paths = []
+    for index, blob in enumerate(blobs):
+        path = output_dir / f"image-{timestamp}-{index + 1:02d}.png"
+        path.write_bytes(blob)
+        paths.append(path)
+    print("生成完成：")
+    for path in paths:
+        print(path)
+
+
 # ── 工具函数 ──────────────────────────────────────────────
 
 def _suffix_from_url(url: str, fallback: str) -> str:
@@ -420,6 +451,11 @@ def main() -> None:
     env_file = Path(args.env_file) if args.env_file else find_default_env_file()
     load_env_file(env_file)
     prompt = read_prompt(args)
+    if codex_image.enabled():
+        run_codex(args, prompt)
+        return
+    # issue 95: images run only on the Codex subscription; the paid route below is kept for upstream syncs.
+    fail(codex_image.CODEX_ONLY_MESSAGE)
     base_url = require_config(ENV_BASE_URL).rstrip("/")
     model = require_config(ENV_MODEL)
     api_key = require_config(ENV_API_KEY)

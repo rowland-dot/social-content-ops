@@ -48,6 +48,7 @@ python skills/shared/scripts/ai_video.py check --provider dashscope
 1. **确认配置与能力**：先运行 `check`，再运行 `capabilities --provider <p> --model <m>`。短剧不得根据品牌名猜测模型是否支持原生音频；新模型用 `VIDEO_CAPABILITIES_JSON` 登记能力和请求字段，无需修改调用流程。
    - **`probe-dialogue`**（短剧用）：真发 1 次生成 + ASR，测该模型能否**逐字忠实**说出指定台词，判 `dialogue_faithful` 并缓存——短剧据此决定用原生对白，还是"无台词生成 + 后期配音"。用法 `probe-dialogue --provider <p> --model <m>`。
 2. **写好 prompt**：AI 视频对 prompt 敏感，按 [AI 视频提示词规范](../video-strategy/references/ai-video-prompting.md) 写镜头、运镜、风格与时长。竖版短视频用 `--ratio 9:16`。
+   - 提示词里不要写「只拍手部」「只拍手」这类话：模型会主动加手。要手就写清手的动作和出现的时间；不要手就写「画面中不出现手」；输入图里没有的元素，写「不新增人物或手」。
 3. **文生视频**：
    ```bash
    python skills/shared/scripts/ai_video.py text2video --provider dashscope \

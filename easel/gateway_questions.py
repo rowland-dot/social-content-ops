@@ -116,6 +116,23 @@ class GatewayQuestionError(RuntimeError):
     pass
 
 
+class GatewayQuestionExpiredError(GatewayQuestionError):
+    """The gateway no longer holds this question: cancelled, expired, answered or never there.
+
+    The gateway reports these with the same INVALID_REQUEST code it uses for an unknown
+    method, and tells them apart only by `details.reason` (e.g. QUESTION_NOT_FOUND).
+    """
+
+
+# Gateway refusal reasons that mean "this question is closed", not "bad request".
+_CLOSED_REASON_MARKS = ("NOT_FOUND", "CANCEL", "EXPIRE", "RESOLVED", "ALREADY")
+
+
+def _question_is_closed(error: dict) -> bool:
+    reason = str((error.get("details") or {}).get("reason") or "").upper()
+    return reason.startswith("QUESTION_") and any(m in reason for m in _CLOSED_REASON_MARKS)
+
+
 class GatewayUnsupportedError(GatewayQuestionError):
     """The gateway does not expose the question RPC surface.
 
@@ -341,10 +358,16 @@ class GatewayClient:
                 if not msg.get("ok", False):
                     err = msg.get("error") or {}
                     detail = json.dumps(err)[:200]
+                    # A closed question carries the same INVALID_REQUEST code but a
+                    # QUESTION_* reason: it must never read as a missing feature.
+                    if _question_is_closed(err):
+                        raise GatewayQuestionExpiredError(
+                            f"{method}: question closed: {detail}")
                     # An unknown method surfaces as INVALID_REQUEST here (the
                     # question RPCs don't exist pre-2026.9.x). Flag it so callers
                     # can quietly disable the bridge instead of retrying forever.
-                    if err.get("code") == "INVALID_REQUEST":
+                    if err.get("code") == "INVALID_REQUEST" and not str(
+                            (err.get("details") or {}).get("reason") or "").startswith("QUESTION_"):
                         raise GatewayUnsupportedError(
                             f"{method} not supported by this gateway: {detail}")
                     raise GatewayQuestionError(f"{method} failed: {detail}")
@@ -394,3 +417,46 @@ def pending_questions_for_session(session_key: str) -> list[dict]:
         return client.list_questions(session_key=session_key, status="pending")
     finally:
         client.close()
+
+
+# OpenClaw's PreToolUse hook (Claude's built-in AskUserQuestion routed through the gateway)
+# cancels its question after this long. The hook settings reject a larger value.
+HOOK_QUESTION_TIMEOUT_MS = 600_000
+
+
+def _real_deadline_ms(question: dict) -> int | None:
+    """When the question really closes: the earlier of the gateway's expiry and the hook's.
+
+    Hook-routed questions carry Claude's tool-call id (`toolu_...`); `ask_user` ones do not.
+    """
+    deadline = question.get("expiresAtMs")
+    created = question.get("createdAtMs")
+    if str(question.get("id") or "").startswith("toolu_") and isinstance(created, (int, float)):
+        hook_deadline = int(created) + HOOK_QUESTION_TIMEOUT_MS
+        return hook_deadline if deadline is None else min(int(deadline), hook_deadline)
+    return deadline
+
+
+def question_events(client, session_key: str, pushed: set[str]) -> list[dict]:
+    """One poll step: what the page must be told about this session's questions.
+
+    `pushed` is the caller's record of questions already sent; it is updated here.
+    Returns `question` events for new pending questions and `question_closed` events
+    for pushed ones that left the pending list (answered, cancelled or expired).
+    """
+    pending = client.list_questions(session_key=session_key, status="pending")
+    pending_ids = {q.get("id") for q in pending}
+    events: list[dict] = []
+    for q in pending:
+        qid = q.get("id")
+        if qid and qid not in pushed:
+            pushed.add(qid)
+            events.append({"kind": "question", "payload": {
+                "id": qid,
+                "questions": q.get("questions", []),
+                "expiresAtMs": _real_deadline_ms(q),
+            }})
+    for qid in sorted(pushed - pending_ids):
+        pushed.discard(qid)
+        events.append({"kind": "question_closed", "payload": {"id": qid}})
+    return events

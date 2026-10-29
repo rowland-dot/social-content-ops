@@ -4,7 +4,7 @@
 
 ## 为什么：读操作是研究真正会猛敲的部分
 
-`read` / `comments` / `analyze-viral` 都命中笔记详情 API（带 `xsec_token`）。在紧循环里连发 30–50 次，XHS 就返回 `NeedVerify`/验证码或 IP 封禁（300012），账号会降级**数小时**。所以研究必须**串行节流，不并行**：一次一篇在途，间隔看起来像人在读而非脚本在爬。
+`read` / `comments` 都命中笔记详情 API（带 `xsec_token`）。在紧循环里连发 30–50 次，XHS 就返回 `NeedVerify`/验证码或 IP 封禁（300012），账号会降级**数小时**。所以研究必须**串行节流，不并行**：一次一篇在途，间隔看起来像人在读而非脚本在爬。
 
 机制是**基于文件的循环**：磁盘上一个工作队列，每"tick"处理一项，每个结果立即 checkpoint。所有状态存文件 → 可恢复、能扛过会话结束。
 
@@ -36,7 +36,7 @@
 3. **保持 <~5 读/分，始终 jitter。** 每次等待加 ±50% 随机 jitter（匀速是机器签名）。只有已警告的 Fast 可越线。
 4. **限制评论分页。** 评论/子评论读是最高风险端点（最先触发风控）。`--comment-pages ≤ 3`，每页计入节奏 + 预算，绝不深爬评论线程。
 5. **每项 checkpoint。** 下一 tick 前把结果写盘并更新 manifest，绝不只在内存。
-6. **尊重每日预算。** 默认软上限 **~200 详情读/天**（异常量本身就是风控触发器）。`consumedToday >= dailyBudget` 就停到次日。
+6. **尊重每日预算。** 默认软上限 **~200 详情读/天**（异常量本身就是风控触发器）。**本环境另有硬上限：守卫每天最多放行 100 次读**（所有需要登录的调用都计数，账号与 favsense 共用），到顶即停到次日。`consumedToday >= dailyBudget` 就停到次日。
 7. **熔断器绝对。** 第一个风控信号出现即 STOP 整个循环、持久化、告知用户，**绝不自动重试穿过它**。仅在人工显式"resume"后恢复。
 8. **读非写。** 此循环仅供读/分析。互动动作（评论/回复/点赞）另有写侧限制，绝不折进研究 tick。
 
@@ -46,13 +46,13 @@
 
 | 文件 | 角色 |
 |------|------|
-| `queue.jsonl` | 工作队列，每行一项：`{ "id", "kind": "read\|comments\|analyze-viral\|search\|user\|user-posts", "arg", "status": "pending\|done\|error", "note" }` |
+| `queue.jsonl` | 工作队列，每行一项：`{ "id", "kind": "read\|comments\|search\|user\|user-posts", "arg", "status": "pending\|done\|error", "note" }` |
 | `results/<id>.json` | 每项的原始 `--json` 输出（语料） |
 | `loop-state.json` | `{ "mode", "intervalSec", "jitterPct", "dailyBudget", "consumedToday", "budgetDate", "lastTickAt", "breaker": "ok\|tripped", "breakerReason" }` |
 | `manifest.md` | 人读的计划 + 进度（每完成项打勾）—— 恢复检查点，每 tick 更新 |
 | `SUMMARY.md` | 队列排空后的最终综合 |
 
-**播种队列**：便宜的列表端点（`search`/`feed`/`user-posts`）用来*建*队列，不算在节流循环内。先跑 `search`/`feed`，抽出每篇 `webUrl`，为每篇写一条 `read`/`analyze-viral` 到 `queue.jsonl`。始终带新鲜 `webUrl`（含 token），别排 bare noteId。
+**播种队列**：便宜的列表端点（`search`/`feed`/`user-posts`）用来*建*队列，不算在节流循环内。先跑 `search`/`feed`，抽出每篇 `webUrl`，为每篇写一条 `read` 到 `queue.jsonl`。始终带新鲜 `webUrl`（含 token），别排 bare noteId。
 
 ## 一个 tick = 一篇笔记
 

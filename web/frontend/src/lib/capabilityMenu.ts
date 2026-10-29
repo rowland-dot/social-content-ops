@@ -18,7 +18,7 @@ export const CAPABILITY_MENU: { meta?: unknown; tabs: CapabilityTab[] } = {
   "counts": {
    "done": 7,
    "ready": 96,
-   "need": 10,
+   "need": 11,
    "incoming": 1
   }
  },
@@ -86,9 +86,15 @@ export const CAPABILITY_MENU: { meta?: unknown; tabs: CapabilityTab[] } = {
        "status": "ready"
       },
       {
+       "skill": "tmall-product-content",
+       "label": "天猫主图与商详页",
+       "desc": "天猫商品主图（尺寸取天猫公布标准允许的几种）和 790 宽详情页：事实表、竞品阅读、页面方案、中文文案、真实包装叠图、测量检查、审批页、PSD 交付。天猫请用本项，不要用「电商详情图」。",
+       "status": "need"
+      },
+      {
        "skill": "ecom-details-image",
        "label": "电商详情图",
-       "desc": "生成电商商品视觉方案：主图概念、场景图、详情页视觉方向和 AI 生图 Prompt。 当用户说\"商品主图\"\"详情页视觉\"\"电商配图方案\"\"商品场景图\"\"带货视觉\"\"产品视觉方向\"\"详情页设计\"时使用。 本 SKILL 出",
+       "desc": "天猫请用「天猫主图与商详页」。生成电商商品视觉方案：主图概念、场景图、详情页视觉方向和 AI 生图 Prompt。 当用户说\"商品主图\"\"详情页视觉\"\"电商配图方案\"\"商品场景图\"\"带货视觉\"\"产品视觉方向\"\"详情页设计\"时使用。 本 SKILL 出",
        "status": "ready"
       },
       {

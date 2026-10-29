@@ -6,7 +6,7 @@ set -euo pipefail
 # 用法: ./scripts/gateway.sh {start|stop|restart|status|logs}
 
 PROFILE="easel"
-LOGFILE="/tmp/easel-gateway.log"
+LOGFILE="${EASEL_GATEWAY_LOG:-/tmp/easel-gateway.log}"   # override lets tests keep off the live gateway's log
 ADAPTER_LOGFILE="/tmp/easel-openai-maas-adapter.log"
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -172,7 +172,13 @@ case "${1:-status}" in
                 'from easel.gateway_questions import question_bridge_supported as s; print("1" if s() else "0")' \
                 2>/dev/null | tail -n 1)" || ASKUSER_CARDS=""
         export EASEL_ASKUSER_CARDS="${ASKUSER_CARDS:-0}"   # 探不出来就按"没有卡片"走文字问答
-        _detach openclaw --profile "$PROFILE" gateway run --force --allow-unconfigured --bind loopback > "$LOGFILE" 2>&1
+        # OpenClaw loads the `.env` of the folder it runs in into its own environment at start and never updates
+        # a key once set; every agent shell inherits that frozen copy, so a value saved later in the settings
+        # panel (or cleared) stayed stale until a restart (issue 53). Run it from a folder that has no `.env`.
+        # Anything deliberately set in this script's own environment still reaches agent shells and still wins.
+        GATEWAY_CWD="${HOME}/.easel-gateway-cwd"
+        mkdir -p "$GATEWAY_CWD"
+        (cd "$GATEWAY_CWD" && _detach openclaw --profile "$PROFILE" gateway run --force --allow-unconfigured --bind loopback > "$LOGFILE" 2>&1)
         # 轮询到 healthz 通，而不是睡死 4 秒就下结论：OpenClaw 2026.9.x 要加载十几个插件，
         # 实测冷启动 ~13s，固定 sleep 4 会让每次 start（以及 setup.sh 的第 8 步）都打出
         # "may not be ready yet" 假告警 —— 网关其实好的。上限给到 60s 再认定失败。

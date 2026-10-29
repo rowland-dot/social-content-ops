@@ -113,7 +113,7 @@ export default function HarnessSettings({ onChange, onSelect }: {
               <span id="chat-only-help" className="settings-help-tooltip" role="tooltip">
                 仅聊天模式直接调用模型 API，适合问答、写作和内容分析，不启动 Agent，
                 不能操作本机文件、运行命令、使用浏览器或执行技能。请在下方配置模型、API 地址和 Key；
-                需要工具时可切换到 OpenClaw、OpenCode、Codex 或其它 Agent。切换后请新建对话，旧历史保留。
+                需要工具时可切换到 OpenClaw、OpenCode、Codex、Claude Code 或其它 Agent。切换后请新建对话，旧历史保留。
               </span>
             </span>
           </div>
@@ -149,18 +149,19 @@ export default function HarnessSettings({ onChange, onSelect }: {
               )}
               <input id="harness-model" className="mock" value={model} disabled={busy || settings?.locked} maxLength={240}
               onChange={(event) => setModel(event.target.value)}
-              placeholder={runtime === 'codex' ? '留空使用 Codex 原生配置' : 'provider/model；留空使用原生配置'} />
+              placeholder={runtime === 'codex' ? '留空使用 Codex 原生配置'
+                : runtime === 'claude' ? '留空使用 Claude Code 原生默认模型' : 'provider/model；留空使用原生配置'} />
               <p className="desc">可从原生 CLI 列表选择，也可手动填写；留空沿用原生默认模型，不修改其它底座的供应商配置。
                 模型是否可用仍取决于当前账号、供应商和原生 CLI 支持。</p>
               {modelNote && <p className="desc" role="status">{modelNote}</p>}
             </div>
           </div>
-          {runtime === 'codex' && (
-            <>
+          {(runtime === 'codex' || runtime === 'claude') && (
             <div className="settings-field">
-              <span className="settings-field-label">Codex 沙箱</span>
+              <span className="settings-field-label">{runtime === 'codex' ? 'Codex 沙箱' : 'Claude Code 沙箱'}</span>
               <div className="settings-field-body">
-                <SettingsSelect label="Codex 沙箱" value={sandbox} disabled={busy || settings?.locked}
+                <SettingsSelect label={runtime === 'codex' ? 'Codex 沙箱' : 'Claude Code 沙箱'} value={sandbox}
+                  disabled={busy || settings?.locked}
                   options={[
                     { value: 'workspace-write', label: '项目工作区写入' },
                     { value: 'read-only', label: '只读' },
@@ -169,6 +170,9 @@ export default function HarnessSettings({ onChange, onSelect }: {
                 <p className="desc">保留所选沙箱边界，不授予系统完全访问权限。</p>
               </div>
             </div>
+          )}
+          {runtime === 'codex' && (
+            <>
             <div className="settings-field">
               <label className="settings-field-label" htmlFor="codex-auto-approve">永久通过授权</label>
               <div className="settings-field-body">

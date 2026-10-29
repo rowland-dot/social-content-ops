@@ -4,6 +4,7 @@ description: >-
   生成电商商品视觉方案：主图概念、场景图、详情页视觉方向和 AI 生图 Prompt。
   当用户说"商品主图""详情页视觉""电商配图方案""商品场景图""带货视觉""产品视觉方向""详情页设计"时使用。
   本 SKILL 出视觉方案+生图 Prompt（策划）；实际抠白底图用 remove-bg，实际生成图片用 ai-image-gen。
+  天猫/Tmall 商品主图和商详页请用 tmall-product-content，不要用本技能。
 layer: produce
 ---
 
@@ -18,7 +19,7 @@ layer: produce
 
 > **审美方向对齐 [card-design](../card-design/SKILL.md)**：详情页信息图 / 营销图的视觉方向遵守同一套去 AI 廉价感原则——禁蓝紫科技渐变、禁 emoji 当图标、字大字细、留白克制、填满不空。把这些写进 Prompt 的正向/否定约束里（本 SKILL 出 t2i Prompt，非 HTML 渲染，故是"审美方向"层面对齐，不走 render_card）。
 
-不要暴露、索要、写入、提交或回显真实 API key。使用者必须通过自己的环境变量配置 API。
+出图只走 Codex（ChatGPT）订阅，不需要任何 API key，也不要索要、写入、提交或回显任何 key。
 
 ## References（按需加载，不要一次性全读）
 
@@ -49,32 +50,24 @@ layer: produce
 
 ## 生图脚本调用（scripts/generate_image.py）
 
-直接生图走 apimart.ai 图像生成接口（模型由 `IMG_MODEL` 指定，model-agnostic，异步轮询）；也可改用统一生图入口 skill `ai-image-gen`。优先在 `.claude/skills/ecom-details-image/` 放 `.env`，不要把真实 API key 写进仓库：
-
-```dotenv
-IMG_BASE_URL=https://api.apimart.ai/v1
-IMG_MODEL=gpt-image-2
-IMG_API_KEY=your-api-key
-```
-
-脚本兼容别名：`OPENAI_BASE_URL`、`OPENAI_API_BASE`、`OPENAI_IMAGE_MODEL`、`OPENAI_MODEL`、`OPENAI_API_KEY`。
+直接生图只走 Codex（ChatGPT）订阅：项目根 `.env` 里要有 `IMG_PROVIDER=codex`，不需要任何 API key。脚本让本机 Codex 用自带的 image_gen 工具出图，存成 `--output-dir` 下的 PNG。`--image` 参考产品图照常传入；`--size` 只是比例提示，像素不保证精确；每张约 1~3 分钟、几万 token 订阅额度，`--n` 一次最多 4 张，PDP 套图请按 4 张一批分批跑。没有 `IMG_PROVIDER=codex` 时脚本直接停下并说明缺这一项；Codex 内置出图工具不可用时脚本也直接报错，**不会**回退到别的出图方式。统一生图入口 skill 是 `ai-image-gen`，同样只走这条路线。
 
 调用形状：
 
 ```bash
-python3 skills/builtin/ecom-details-image/scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
+python3 skills/builtin/ecom-details-image/scripts/generate_image.py --prompt "..." --size 1:1
 python3 skills/builtin/ecom-details-image/scripts/generate_image.py --prompt-file prompt.txt --output-dir outputs
 python3 skills/builtin/ecom-details-image/scripts/generate_image.py --env-file .env --image product.jpg --prompt-file prompt.txt
 ```
 
-参数：`--prompt` / `--prompt-file`；`--output-dir`（仅用户指定时用，否则 `generated-images/`）；`--size`（比例格式，14 种，如 `1:1`/`16:9`/`2:3`/`4:5`，默认 `1:1`）；`--resolution`（`1k`/`2k`/`4k`，默认 `2k`，4K 仅限 6 个宽幅比例）；`--image`（参考产品图路径，对保证产品外观准确非常有效）；`--poll-interval`（默认 `5`）；`--timeout`（默认 `180`）；`--format`（默认 `png`）。
+参数：`--prompt` / `--prompt-file`；`--output-dir`（仅用户指定时用，否则 `generated-images/`）；`--size`（比例提示，如 `1:1`/`16:9`/`2:3`/`4:5`，默认 `1:1`）；`--image`（参考产品图路径，对保证产品外观准确非常有效）；`--n`（一次最多 4 张）；`--format`（只能 `png`）。
 
 生图规则：
 
 1. 先输出最终 Prompt，再调脚本。短 Prompt 用 `--prompt`，长 Prompt 用 `--prompt-file`。
 2. 根据平台选 `--size`，没要求时默认 `1:1`。
-3. 缺少 `IMG_API_KEY` 等配置时**不要调用脚本**，只输出完整 Prompt 包 + 配置命令示例，说明需要在 `.env` 里配置什么，交给用户自行运行。
-4. 如果 API/模型不支持某尺寸，改用最接近的支持尺寸并说明。
+3. `.env` 里没有 `IMG_PROVIDER=codex` 时**不要调用脚本**，只输出完整 Prompt 包，并只告诉用户项目设置缺 `IMG_PROVIDER=codex`；不要去找别的出图服务。
+4. Codex 只给比例提示：要的尺寸不是 Codex 给得出的比例时，改用最接近的比例并说明。
 
 ## QA 检查（输出前逐条确认）
 
@@ -86,7 +79,7 @@ python3 skills/builtin/ecom-details-image/scripts/generate_image.py --env-file .
 - 多图任务：每张以同一段 Campaign Style Lock 开头；已分配不同角度和景别，无连续 3 张相同角度，全景图占比 ≤ 40%。
 - **详情页图片必须是电商信息图格式**（含标题、图标、标签、利益点、步骤或信任徽章），每张详情页 Prompt 以 `E-commerce infographic` 开头，不是单纯多角度产品照片。
 - 图内文字短且必要；有用户参考图时已传 `--image`；负面约束覆盖常见失败点。
-- 输出和文件里没有 API key 或私密凭据。
+- 输出和文件里没有私密凭据。
 - 提醒用户出图后放大 200% 逐字核对中文笔画。
 
 ## 输出格式

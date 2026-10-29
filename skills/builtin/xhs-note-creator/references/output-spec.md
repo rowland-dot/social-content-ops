@@ -7,7 +7,7 @@ xhs-note-creator 的产物统一保存到 `outputs/<具体主题>/` 目录下，
 ```
 outputs/{具体主题}/
 ├── {完整标题}.md          # 长文原稿（正文，供拆卡/caption 使用）
-├── meta.json              # 元数据（卡片/分镜/caption/hashtags/合成策略）
+├── meta.json              # 元数据（卡片/分镜/caption/hashtags/合成策略/claims 声明记录）
 ├── images/                # 最终卡图 / 封面
 │   └── card_01_cover.jpg ...
 └── reference/             # 素材与生成过程
@@ -15,6 +15,10 @@ outputs/{具体主题}/
     ├── search_results.json# 参考搜索结果
     └── summary.md         # 参考资料摘要
 ```
+
+## 声明记录（claims）
+
+每篇笔记的 `meta.json` 里都有 `claims`：帖子自己写的每一句事实声明，各自带证据位置或兜底做法（删掉 / 改写）。字段和规则见 `meta-schema.md`。商品包装上印的文字不算声明，也不算证据，不进这份记录。
 
 ## 文件命名规则
 

@@ -18,7 +18,7 @@
 - `video_ops.py` — 通用视频处理封装（ffmpeg）：cut/concat/speed/silence-cut/text/aspect(横竖转)/frame/gif/compress/bgm/watermark/info。video-editing 用它
 - `asr.py` — 语音转字幕（faster-whisper）：transcribe → SRT/ASS/TXT/JSON，中文友好断句。auto-subtitle 用它
 - `tts.py` — 文字转语音配音（edge-tts）：speak（多音色/语速/字幕）/voices。tts-voiceover 用它
-- `ai_image.py` — AI 文生图/图生图/变体（OpenAI 兼容 + apimart 异步，用户自备 key）。ai-image-gen 用它
+- `ai_image.py` — AI 文生图/图生图/变体（只走 Codex 订阅，不需要 key）。ai-image-gen 用它
 - `ai_video.py` — AI 文/图生视频（provider: 通义万相/火山Seedance/可灵/OpenAI兼容，异步轮询，用户自备 key）。ai-video-gen 用它
 - `ai_music.py` — AI 音乐/BGM 生成（provider: DashScope/Suno兼容，用户自备 key）。ai-music 用它
 

@@ -18,6 +18,7 @@ import SettingsPanel from './components/SettingsPanel';
 import { fetchStatus, fetchPersonas, streamChat, fetchLastTurn, stopChat } from './lib/api';
 import type { PersonaItem, UploadedFile, ChatQuestion } from './lib/api';
 import { questionStatus } from './lib/api';
+import { lateAnswerMessage } from './components/QuestionCards';
 import { deleteSession as deleteRemoteSession } from './lib/api';
 import {
   loadSessions,
@@ -208,14 +209,36 @@ export default function App() {
   const streamCtl = useRef<Record<string, AbortController>>({});
   const streamAcc = useRef<Record<string, { content: string; thinking: string; steps: string[]; questions: ChatQuestion[] }>>({});
   const answeredRef = useRef<Set<string>>(new Set());   // 已提交答案的 question id：重放/恢复不再重现
+  // 一轮结束时仍没人答的问答题：留在对话里（标为过期，选项仍可点）。刷新页面后不再重现。
+  const [lateBoxes, setLateBoxes] = useState<Record<string, ChatQuestion[]>>({});
+  // 过期题的补答若赶上 AI 这一轮还在跑：先扣下，等这一轮结束再作为一条聊天消息发出。
+  const heldAnswers = useRef<Record<string, { id: string; text: string }[]>>({});
+  const flushHeldRef = useRef<(sessionId: string) => void>(() => {});
   // ---- 打字机：分批到达的 token 按节奏吐给界面 ----
   const typingBuf = useRef<Record<string, string>>({});
   const typingTimer = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const TYPING_INTERVAL = 12;          // 每 tick 间隔 ms（短回复约 83 字/秒：快且有逐字感）
 
+  // 结束事件已到、只等打字机吐完再落盘的收尾动作。一轮只能关一次：取出即删，取不到就是已关过。
+  const closing = useRef<Record<string, () => void>>({});
+  const closeNow = (sessionId: string): boolean => {
+    const close = closing.current[sessionId];
+    if (!close) return false;
+    delete closing.current[sessionId];
+    flushTyping(sessionId);
+    close();
+    return true;
+  };
+  /** 结束事件到了：队列已空就立刻落盘，否则交给打字机吐完后落盘（或被「停止」提前收尾）。 */
+  const closeAfterTyping = (sessionId: string, close: () => void) => {
+    // 后台标签页的计时器被浏览器停掉，打字机永远吐不完，而且没人在看：直接落盘
+    if (!typingBuf.current[sessionId] || document.hidden) { flushTyping(sessionId); close(); return; }
+    closing.current[sessionId] = close;
+  };
+
   const pumpTyping = (sessionId: string) => {
     const buf = typingBuf.current[sessionId] || '';
-    if (!buf) { clearTyping(sessionId); return; }
+    if (!buf) { clearTyping(sessionId); closeNow(sessionId); return; }
     // 动态步长：<80 字逐字吐（83字/秒），每满 80 字每 tick 多吐 1 字，长文更快
     const step = Math.max(1, Math.floor(buf.length / 80));
     const take = buf.slice(0, step);
@@ -260,13 +283,34 @@ export default function App() {
   const clearStream = useCallback((sessionId: string) => {
     // 打字机收尾：剩余队列立刻吐出，避免结束瞬间内容被截断
     flushTyping(sessionId);
+    // 这一轮结束了，AI 不会再等：没答的题留下来，标为过期
+    const leftover = (streamAcc.current[sessionId]?.questions || [])
+      .filter((q) => !answeredRef.current.has(q.id))
+      .map((q) => ({ ...q, expired: true }));
+    if (leftover.length) {
+      setLateBoxes((p) => ({
+        ...p,
+        [sessionId]: [...(p[sessionId] || []).filter((x) => !leftover.some((l) => l.id === x.id)), ...leftover],
+      }));
+    }
+    delete closing.current[sessionId];
     delete streamCtl.current[sessionId];
     delete streamAcc.current[sessionId];
+    setTimeout(() => flushHeldRef.current(sessionId), 0);   // 扣下的补答，这一轮结束了就发
     setStreams((prev) => {
       const next = { ...prev };
       delete next[sessionId];
       return next;
     });
+  }, []);
+
+  // 后端告知某道题已不再 pending（被取消/过期，或已在别处答掉）：本地没答过的就标为过期
+  const markQuestionExpired = useCallback((sessionId: string, questionId: string) => {
+    if (answeredRef.current.has(questionId)) return;
+    const a = streamAcc.current[sessionId];
+    if (!a || !a.questions.some((q) => q.id === questionId)) return;
+    a.questions = a.questions.map((q) => (q.id === questionId ? { ...q, expired: true } : q));
+    setStreams((p) => (p[sessionId] ? { ...p, [sessionId]: { ...p[sessionId], questions: [...a.questions] } } : p));
   }, []);
 
   // 启动一次流式（fetch + 累积 + 回调）——只管流，不动消息列表
@@ -298,11 +342,7 @@ export default function App() {
       (sessionKey) => {
         // done 不能立即 flush——token 和 done 几乎同时到达（OpenClaw 攒批），
         // 立即 flush 会把整包瞬间冲出，打字机白做。等队列吐完再落盘。
-        const waitAndFinalize = () => {
-          if (typingBuf.current[sessionId]) {
-            setTimeout(waitAndFinalize, 60);
-            return;
-          }
+        closeAfterTyping(sessionId, () => {
           const a = streamAcc.current[sessionId];
           appendAssistant(sessionId, {
             role: 'assistant', content: a?.content || '',
@@ -310,15 +350,10 @@ export default function App() {
           }, sessionKey);
           clearStream(sessionId);
           try { sessionStorage.removeItem(`easel_pending_turn:${sessionId}`); } catch { /* ignore */ }
-        };
-        waitAndFinalize();
+        });
       },
       (err) => {
-        const waitAndFinalize = () => {
-          if (typingBuf.current[sessionId]) {
-            setTimeout(waitAndFinalize, 60);
-            return;
-          }
+        closeAfterTyping(sessionId, () => {
           const a = streamAcc.current[sessionId];
           appendAssistant(sessionId, {
             role: 'assistant',
@@ -327,8 +362,7 @@ export default function App() {
           });
           clearStream(sessionId);
           try { sessionStorage.removeItem(`easel_pending_turn:${sessionId}`); } catch { /* ignore */ }
-        };
-        waitAndFinalize();
+        });
       },
       (thinkChunk) => {
         const a = streamAcc.current[sessionId]; if (!a) return;
@@ -371,8 +405,9 @@ export default function App() {
       },
       // onHeartbeat：防呆心跳（30s 静默）。只设独立的「未卡住」提示，绝不写 activity/thinking → 不顶掉真实状态。
       (note) => setStreams((p) => (p[sessionId] ? { ...p, [sessionId]: { ...p[sessionId], stillWorking: note } } : p)),
+      (qid) => markQuestionExpired(sessionId, qid),
     );
-  }, [appendAssistant, clearStream]);
+  }, [appendAssistant, clearStream, markQuestionExpired]);
 
   // 刷新/重开页面后按 eventId=0 重放当前 job，再继续实时 tail；旧任务无事件日志时退回最终快照。
   const resumePendingTurn = useCallback((sessionId: string) => {
@@ -401,11 +436,7 @@ export default function App() {
         ensureTypingPump(sessionId);
       },
       (sessionKey) => {
-        const waitAndFinalize = () => {
-          if (typingBuf.current[sessionId]) {
-            setTimeout(waitAndFinalize, 60);
-            return;
-          }
+        closeAfterTyping(sessionId, () => {
           const a = streamAcc.current[sessionId];
           appendAssistant(sessionId, {
             role: 'assistant', content: a?.content || '（无输出）',
@@ -413,20 +444,14 @@ export default function App() {
           }, sessionKey);
           clearStream(sessionId);
           try { sessionStorage.removeItem(`easel_pending_turn:${sessionId}`); } catch { /* ignore */ }
-        };
-        waitAndFinalize();
+        });
       },
       (err) => {
-        const waitAndFinalize = () => {
-          if (typingBuf.current[sessionId]) {
-            setTimeout(waitAndFinalize, 60);
-            return;
-          }
+        closeAfterTyping(sessionId, () => {
           const a = streamAcc.current[sessionId];
           appendAssistant(sessionId, { role: 'assistant', content: (a?.content || '') + `\n\nError: ${err.message}` });
           clearStream(sessionId);
-        };
-        waitAndFinalize();
+        });
       },
       (chunk) => { const a = streamAcc.current[sessionId]; if (a) a.thinking = (a.thinking + chunk).slice(-4000); },
       (status) => {
@@ -480,13 +505,21 @@ export default function App() {
       },
       // onHeartbeat：同上，独立的「未卡住」提示，不覆盖 activity/thinking。
       (note) => setStreams((p) => (p[sessionId] ? { ...p, [sessionId]: { ...p[sessionId], stillWorking: note } } : p)),
+      (qid) => markQuestionExpired(sessionId, qid),
     );
-  }, [appendAssistant, clearStream]);
+  }, [appendAssistant, clearStream, markQuestionExpired]);
 
   // 活跃会话确定后（含挂载首刷）尝试恢复它悬空的一轮
   useEffect(() => {
     if (activeSessionId) resumePendingTurn(activeSessionId);
   }, [activeSessionId, resumePendingTurn]);
+
+  // 标签页转入后台时，已收到结束事件、还在等打字机的回复直接落盘（后台计时器停摆，等不到吐完）
+  useEffect(() => {
+    const onHide = () => { if (document.hidden) Object.keys(closing.current).forEach(closeNow); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, []);
 
   // 落用户消息（可选先把 messages 截断到 truncateAt）→ 启动流。retry/edit 都走这里。
   const sendUserAndStream = useCallback((
@@ -538,6 +571,40 @@ export default function App() {
     sendUserAndStream(sessionId, displayText, attachments, legacyAgentText, userIndex);
   }, [sendUserAndStream]);
 
+  // 过期题的补答：作为一条普通聊天消息发给 AI（写明答的是哪道题）；AI 这一轮还在跑就先扣下，结束后发。
+  const flagWaiting = (sessionId: string, questionId: string) => {
+    const a = streamAcc.current[sessionId];
+    if (a) {
+      a.questions = a.questions.map((q) => (q.id === questionId ? { ...q, waiting: true } : q));
+      setStreams((p) => (p[sessionId] ? { ...p, [sessionId]: { ...p[sessionId], questions: [...a.questions] } } : p));
+    }
+    setLateBoxes((p) => ({
+      ...p, [sessionId]: (p[sessionId] || []).map((q) => (q.id === questionId ? { ...q, waiting: true } : q)),
+    }));
+  };
+  const flushHeld = (sessionId: string) => {
+    const held = heldAnswers.current[sessionId];
+    if (!held?.length || streamCtl.current[sessionId]) return;
+    delete heldAnswers.current[sessionId];
+    const ids = new Set(held.map((h) => h.id));
+    ids.forEach((id) => answeredRef.current.add(id));
+    setLateBoxes((p) => ({ ...p, [sessionId]: (p[sessionId] || []).filter((q) => !ids.has(q.id)) }));
+    sendUserAndStream(sessionId, held.map((h) => h.text).join('\n\n'));
+  };
+  flushHeldRef.current = flushHeld;
+  const handleLateAnswer = (sessionId: string, q: ChatQuestion, answers: Record<string, string[]>) => {
+    const text = lateAnswerMessage(q, answers);
+    heldAnswers.current[sessionId] = [...(heldAnswers.current[sessionId] || []).filter((h) => h.id !== q.id), { id: q.id, text }];
+    if (streamCtl.current[sessionId]) { flagWaiting(sessionId, q.id); return; }
+    // 本轮没在跑：立刻发。盒子若还挂在流式状态里（回放残留）也一并摘掉。
+    const a = streamAcc.current[sessionId];
+    if (a) {
+      a.questions = a.questions.filter((x) => x.id !== q.id);
+      setStreams((p) => (p[sessionId] ? { ...p, [sessionId]: { ...p[sessionId], questions: [...a.questions] } } : p));
+    }
+    flushHeld(sessionId);
+  };
+
   // 热点「一键做成内容」：新开会话，把选题作为指令发出去，跳到对话页。
   const handleUseTopic = useCallback((title: string) => {
     const prompt = `围绕当前热点「${title}」：先判断它适不适合我的账号赛道；若合适，给 2-3 个差异化的二创角度，并把你最推荐的那条写成可直接发布的文案初稿。`;
@@ -549,6 +616,8 @@ export default function App() {
   }, [selectedPersona, sendUserAndStream]);
 
   const handleStopStream = useCallback((sessionId: string) => {
+    // 结束事件已到、只差把余字打完：这一轮其实已经结束，直接收尾，不算「已停止」
+    if (closeNow(sessionId)) return;
     streamCtl.current[sessionId]?.abort();
     // 告诉后端**真正终止**这一轮 agent 并释放会话锁——否则后端进程还在跑、占着锁，下一句会被拦
     void stopChat(sessionId).catch(() => { /* 后端可能已结束，忽略 */ });
@@ -723,6 +792,8 @@ export default function App() {
             onResend={(userIndex, displayText, attachments, legacyAgentText) => handleResend(
               activeSession.id, userIndex, displayText, attachments, legacyAgentText,
             )}
+            lateQuestions={lateBoxes[activeSession.id]}
+            onLateAnswer={(q, answers) => handleLateAnswer(activeSession.id, q, answers)}
             onQuestionAnswered={(qid) => {
               answeredRef.current.add(qid);
               // 已答题从流式状态中移除——切走/切回会话都不再重现（组件内部 state 会在重挂时清零，只藏不移除没用）

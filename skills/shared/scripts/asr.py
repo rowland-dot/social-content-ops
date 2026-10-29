@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 # ── 常量 ──────────────────────────────────────────────────────────────
@@ -297,8 +298,16 @@ def _transcribe_audio(audio: Path, a) -> tuple[list[tuple[float, float, str]], d
     duration = getattr(tinfo, "duration", None)
     print(f"[asr] 检测语言={detected} 时长={duration}s，开始转录……", file=sys.stderr)
 
+    # segments arrive one at a time as the audio is decoded, so stopping the loop stops the work and keeps
+    # what was already recognised; --max-seconds counts from here (loading the model is not counted)
+    max_seconds = getattr(a, "max_seconds", 0) or 0
+    deadline = time.monotonic() + max_seconds if max_seconds else None
+    partial = False
     cues: list[tuple[float, float, str]] = []
     for seg in segments:
+        if deadline is not None and time.monotonic() >= deadline:
+            partial = True
+            break
         text = (seg.text or "").strip()
         if not text:
             continue
@@ -311,6 +320,7 @@ def _transcribe_audio(audio: Path, a) -> tuple[list[tuple[float, float, str]], d
         "language": detected,
         "duration_sec": round(duration, 3) if duration else None,
         "num_segments": len(cues),
+        "partial": partial,
     }
     return cues, meta
 
@@ -327,6 +337,8 @@ def cmd_transcribe(a) -> int:
             audio = tmp_audio
 
         cues, meta = _transcribe_audio(audio, a)
+        if meta["partial"]:
+            print(f"[asr] 警告：到达 --max-seconds={a.max_seconds}，只转录了前面一部分。", file=sys.stderr)
         if not cues:
             print("[asr] 警告：未识别到任何语音内容（可能是静音或纯音乐）。",
                   file=sys.stderr)
@@ -449,6 +461,8 @@ def _add_transcribe_args(p) -> None:
     p.add_argument("--max-line-chars", type=int, default=18,
                    help="字幕每行字数，超长自动断行（中文默认 18）")
     p.add_argument("--beam-size", type=int, default=5, help="beam search 宽度（默认 5）")
+    p.add_argument("--max-seconds", type=int, default=0,
+                   help="最多转录多少秒（不含加载模型），到点就停并保留已识别的部分，json 里 partial=true；0 = 不限（默认）")
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -55,7 +55,7 @@ function setup({ runtime = 'openclaw', locked = false, installed = true, saveErr
     models: { codex: 'codex-model', opencode: 'provider/model' },
     sandbox: 'workspace-write',
     locked,
-    agents: ['api', 'openclaw', 'opencode', 'codex', 'acp'].map(id => ({
+    agents: ['api', 'openclaw', 'opencode', 'codex', 'claude', 'acp'].map(id => ({
       id, label: id === 'api' ? '仅聊天模式' : id,
       installed: ['api', 'openclaw'].includes(id) || installed, install_hint: `install ${id}`,
     })),
@@ -138,7 +138,7 @@ test('changing harness is local until save and retains its model override', asyn
   view.render();
   await settle();
   let tree = view.render();
-  assert.equal(nodes(tree, 'settings-select')[0].props.options.length, 5);
+  assert.equal(nodes(tree, 'settings-select')[0].props.options.length, 6);
   nodes(tree, 'settings-select')[0].props.onChange('codex');
   tree = view.render();
   assert.equal(nodes(tree, 'input')[0].props.value, 'codex-model');
@@ -174,6 +174,20 @@ test('Codex permanent approval defaults off, saves explicitly and stays exclusiv
   nodes(view.render(), 'button')[0].props.onClick();
   await settle();
   assert.equal(view.saves[1].codexAutoApprove, undefined);
+});
+
+test('Claude Code has its own default-model hint and sandbox, but not the Codex-only approval switch', async () => {
+  const view = setup({ runtime: 'claude' });
+  view.render();
+  await settle();
+  const tree = view.render();
+  assert.equal(nodes(tree, 'input')[0].props.placeholder, '留空使用 Claude Code 原生默认模型');
+  assert.ok(nodes(tree, 'settings-select').some(node => node.props.label === 'Claude Code 沙箱'));
+  assert.equal(nodes(tree, 'settings-select').some(node => node.props.label === '原生模型'), false);
+  assert.equal(nodes(tree, 'button').some(node => node.props.role === 'switch'), false);
+  nodes(tree, 'button')[0].props.onClick();
+  await settle();
+  assert.deepEqual(view.saves, [{ runtime: 'claude', model: '', sandbox: 'workspace-write' }]);
 });
 
 test('environment-locked harness cannot be changed or saved', async () => {
@@ -223,7 +237,7 @@ test('engine options retain missing harnesses with configuration previews and in
   view.render();
   await settle();
   assert.deepEqual(nodes(view.render(), 'settings-select')[0].props.options.map(option => option.value),
-    ['api', 'openclaw', 'opencode', 'codex', 'acp']);
+    ['api', 'openclaw', 'opencode', 'codex', 'claude', 'acp']);
   const option = nodes(view.render(), 'settings-select')[0].props.options.find(item => item.value === 'opencode');
   assert.match(option.label, /未安装 \/ 未配置/);
   nodes(view.render(), 'settings-select')[0].props.onChange('opencode');
@@ -236,7 +250,7 @@ test('engine options retain missing harnesses with configuration previews and in
   missing.render();
   await settle();
   assert.deepEqual(nodes(missing.render(), 'settings-select')[0].props.options.map(option => option.value),
-    ['api', 'openclaw', 'opencode', 'codex', 'acp']);
+    ['api', 'openclaw', 'opencode', 'codex', 'claude', 'acp']);
   assert.equal(nodes(missing.render(), 'button')[0].props.disabled, true);
 });
 test('failed harness save shows error without switching the active runtime', async () => {

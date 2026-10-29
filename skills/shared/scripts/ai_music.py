@@ -114,7 +114,8 @@ def load_env_file(env_file: Path | None) -> None:
         if not key:
             print(f"警告：.env 第 {line_number} 行缺少变量名，已跳过。", file=sys.stderr)
             continue
-        if key not in os.environ:
+        # 变量存在但为空/纯空白，等同未设置：网关会把启动时 .env 里的空键原样传给每个 agent shell。
+        if not os.environ.get(key, "").strip():
             os.environ[key] = strip_env_value(value)
 
 

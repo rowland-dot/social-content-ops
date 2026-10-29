@@ -26,7 +26,7 @@ from easel.openclaw_cmd import openclaw_base_cmd
 from easel.persona import list_personas as _list_personas
 from easel.persona import persona_prefix
 from easel.persona import chat_turn_message
-from easel.persona import load_profile_text
+from easel.persona import load_profile_text, profile_dir
 from easel.direct_api import (DirectAPIError, SYSTEM_PROMPT, history_path,
                               read_settings, stream_chat)
 from easel.timeouts import TIMEOUT_CHAT
@@ -34,7 +34,6 @@ from easel import harnesses
 from easel.harnesses.base import HarnessError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-PROFILES_DIR = PROJECT_ROOT / "profiles"
 PROFILE = "easel"
 
 
@@ -95,7 +94,7 @@ def cmd_chat(_args) -> int:
     if personas:
         print("  选择用户画像：")
         for i, name in enumerate(personas, 1):
-            identity = PROFILES_DIR / name / "identity.md"
+            identity = profile_dir(name) / "identity.md"
             desc = ""
             if identity.is_file():
                 for line in identity.read_text(encoding="utf-8").splitlines():

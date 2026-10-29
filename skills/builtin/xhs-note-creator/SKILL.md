@@ -32,10 +32,14 @@ layer: produce
 
 按顺序执行，**不要跳步**。
 
+### 先读账号的创作指南（issue 125，在 Step 0 之前）
+
+起草之前，运行 `python3 skills/shared/scripts/creation_guide.py check --brand <品牌>`，把它给出的这个账号的创作指南整份读完（帖子部分管文风、说法和格式，图部分管出图）。读的是哪一份记进 `meta.json` 的 `creation_guide`（路径和日期，见 `references/meta-schema.md`）。没有创作指南（命令说“没有创作指南”）就停下，告诉负责人并提议从 `profiles/_template/creation-guide.md` 建；其间不写任何帖子的文字。
+
 ### Step 0 — Intake（必问，一次问完）
 
 1. **主题 / 目标读者 / 核心观点**
-2. **输出形态**：图文 or 视频？（默认图文）
+2. **输出形态**：图文卡片 / 照片场景帖 / 视频？（默认图文卡片）。**照片场景帖（photo-scene post）**= 真实商品照 + AI 场景 + 手写标题，出图交给 xhs-reference-visual；用户不选，就不用。
 3. **素材**：有无现成文字/图片/视频？
 4. **风格**：视觉风格走 **card-design 风格库**（9 种：瑞士极简/杂志编辑/新中式墨韵/奶油温柔/多巴胺 Y2K/高奢黑金/手账贴纸/极客终端/植物清新）——在 Step 5A 出卡时由 card-xiaohongshu 引导选定，这里先不锁死。
 5. **卡片数量 / 视频时长**：图文默认 5-7 张；视频默认 30-60 秒
@@ -70,6 +74,11 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 
 从 H2 开始（不写 H1），写完**先给用户确认**再继续。
 
+**声明记录（与长文同时做，确认之前）**：列出帖子自己写的每一句事实声明（功能、功效、参数、规格、含量、成分、工艺名、认证、专业术语），每条记下证据（品牌文件 / `reference/` 里的抓取原文 / 负责人或团队说过的话 / 用户自己的素材）；找不到证据的，删掉或改写成不构成事实声明的说法，并写明新说法。这些随长文一起给用户确认，让没证据的声明和处理办法在确认时就看得到。最终存进 `meta.json` 的 `claims`（字段见 `references/meta-schema.md`，没有声明就写 `[]`）。
+
+- 商品包装上印的文字不算声明，也不算证据，不进 `claims`
+- 兜底不得编造亲身体验或用户反馈（"自用、回购、亲测"必须有真实素材），不得伪造用户案例
+
 ### Step 4 — 去 AI 化（强制）
 
 去 AI 感规则统一走 text-polisher 权威源，不在本 SKILL 维护副本：
@@ -96,6 +105,9 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 | `html_card` | 纯文字卡 / 概念卡 / 数据卡（**默认、最常用**） | **走 [card-xiaohongshu](../card-xiaohongshu/SKILL.md)**：读 [card-design](../card-design/SKILL.md) 选风格锁 spec → 写 HTML → `render_card.py` 出图 → `card_audit.py` 硬门禁 |
 | `text_on_photo` | 有真实照片 + 钩子文字（真实素材最佳） | Pillow `scripts/text_on_image.py`（小红书真实素材路径，保留） |
 | `collage` | 有 2-4 张互补照片 | Pillow `scripts/collage_3x4.py` |
+| `photo_scene` | 用户在 Step 0 选了照片场景帖（真实商品照 + AI 场景 + 手写标题） | **走 [xhs-reference-visual](../xhs-reference-visual/SKILL.md)**：出图这一步整个交给它（小样、核对都在它那边） |
+
+只有用户在 Step 0 选了照片场景帖，才用 `photo_scene`；本 SKILL 不自己判断、不替用户选。照片场景帖的文案、caption、hashtags 和文本门仍照本 SKILL。
 
 > 纯文字/概念/数据卡**不再走用户自备 t2i**——统一由 card-xiaohongshu 渲染，保证视觉质量；只有「真实照片卡」才走 Pillow 路径。
 
@@ -109,16 +121,16 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 
 **标题**：从公共源 `skills/shared/references/hook-title-formulas.md` 选标题公式（痛点+方案 / 提问式 / 发现式 / 热点词 / 身份共鸣等），产 2-3 个备选。
 
-**caption**：100-300 字，hook 开头 → 关键信息 → CTA，闺蜜语气 + 少量 emoji（点缀节奏，不当图标）
+**caption**：以 300 字左右为目标，内容需要时可以超出（建议不超过 800 字；超过 800 字校验会警告，超过 1000 字校验失败，最少 100 字），hook 开头 → 关键信息 → CTA，闺蜜语气 + 少量 emoji（点缀节奏，不当图标）
 
-**hashtags**：5-8 个，4 核心（热点词 + 核心功能 + 差异化 + 目标人群）+ 4 辅助（场景 + 品类）
+**hashtags**：5-10 个，4 核心（热点词 + 核心功能 + 差异化 + 目标人群）+ 其余辅助（场景 + 品类）
 
 ### Step 7 — 落盘
 
 ```
 outputs/主题名/{YYYY-MM-DD}/{短标题}_{时间戳}/
 ├── {完整标题}.md        # 长文原稿
-├── meta.json            # 元数据（卡片/分镜/caption/hashtags）
+├── meta.json            # 元数据（卡片/分镜/caption/hashtags/claims 声明记录）
 ├── images/              # 最终卡图 / 封面
 └── reference/           # materials.json / 搜索结果
 ```
@@ -127,7 +139,7 @@ outputs/主题名/{YYYY-MM-DD}/{短标题}_{时间戳}/
 
 ### Step 8 — 校验（强制，两道门）
 
-**① 文本/结构门**（标题/caption/hashtag/卡片字数与结构）：
+**① 文本/结构门**（标题/caption/hashtag/卡片字数与结构，以及 `claims` 声明记录是否齐全、与帖子一致；`photo_scene` 同样要跑）：
 
 ```bash
 python3 skills/builtin/xhs-note-creator/scripts/validate_meta.py outputs/主题名/meta.json

@@ -105,6 +105,14 @@ python skills/shared/scripts/video_ops.py bgm -i clip.mp4 -o clip_bgm.mp4 \
   --music outputs/主题名/vlog-bgm.mp3 --voice-volume 1.0 --music-volume 0.3
 ```
 
+## 通过 LibTV 用 Eleven Music
+
+`ai_music.py` 没有 LibTV 这个 provider。要用 LibTV 上的 Eleven Music，按 [libtv-cli](../libtv-cli/SKILL.md) 的做法跑，它有三个特点：
+
+- 没有「纯音乐」开关：描述里要写清「只要纯音乐，不要人声和歌词」。
+- 输出开头约有 1 秒静音，结尾自带 3–4 秒淡出。
+- 所以申请的时长要比成片至少长 5 秒（拿到后再裁），或者在描述里写「不要淡出收尾，结尾保持满音量」。
+
 ## 规则
 
 1. **先 check 再 generate** — 缺 key 时 check 给出清晰中文提示，不浪费一次失败请求。
@@ -112,4 +120,4 @@ python skills/shared/scripts/video_ops.py bgm -i clip.mp4 -o clip_bgm.mp4 \
 3. **不重造能力** — 裁剪 / 归一化 / 加视频 BGM 复用 `audio_ops.py` / `video_ops.py`。
 4. **provider 可插拔** — 换服务商只改 `--provider` + env，SKILL 流程不变。
 5. **与 tts-voiceover 分工** — 背景音乐/配乐找 ai-music，人声配音找 tts-voiceover。
-   两者可组合：音频文件内的人声+BGM 用 `audio_mix.py mix`；给视频加 BGM/旁白才用 `video_ops.py bgm`（旁白短于视频时加 `--music-loop-off`）。
+   两者可组合：ai-music 出 BGM + tts-voiceover 出旁白 → `audio_mix.py mix` 混音（输出纯音频）。

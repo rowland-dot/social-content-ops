@@ -150,9 +150,12 @@ def record_publish(platform: str, title: str, url: str = "", ptype: str = "",
                    profile: str = "", data_path: Path | None = None,
                    forward_log: bool = True) -> bool:
     """追加一条已发布记录到日历底座。返回是否写入。全程异常安全。
-    env EASEL_CALENDAR_AUTORECORD=0 时直接跳过（发布页由 web 记录，防重复）。"""
+    env EASEL_CALENDAR_AUTORECORD=0 时直接跳过（发布页由 web 记录，防重复）。
+    profile = 品牌/账号画像名（如 northwind）；缺省取 env EASEL_PROFILE。写进 publish-log 的
+    profile 字段，同平台多品牌时按品牌分析才不会混在一起。"""
     if os.environ.get("EASEL_CALENDAR_AUTORECORD") == "0":
         return False
+    profile = profile or os.environ.get("EASEL_PROFILE", "")
     try:
         path = data_path or DEFAULT_DATA
         profile = (profile or os.environ.get("EASEL_ACTIVE_PROFILE") or "").strip()

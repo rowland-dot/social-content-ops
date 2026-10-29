@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/ops/libtv-update-gate/libtv_gate.py\" hook 2>/dev/null || python3 \"$CLAUDE_PROJECT_DIR/ops/libtv-update-gate/libtv_gate.py\" hook 2>/dev/null || echo '{\"systemMessage\":\"LibTV update gate could not run: no working Python was found\"}'",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

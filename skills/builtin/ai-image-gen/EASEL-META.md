@@ -5,13 +5,13 @@
 | **SKILL 名称** | ai-image-gen |
 | **所属层** | produce |
 | **来源** | Easel 自研 |
-| **参考** | OpenAI Images API（/images/generations、/images/edits、/images/variations）；apimart.ai 异步图片任务 API |
-| **功能描述** | 通用 AI 生图：文生图 / 图生图（图像编辑）/ 图像变体，OpenAI 兼容同步 + apimart 异步双模式自动检测 |
+| **参考** | 上游 Easel 的同名技能；本项目只保留 Codex 订阅路线（issue 95） |
+| **功能描述** | 通用 AI 生图：文生图 / 图生图（图像编辑）/ 图像变体，只走 Codex（ChatGPT 订阅） |
 | **核心脚本** | `skills/shared/scripts/ai_image.py`（纯标准库 urllib/http，无第三方依赖） |
 | **子命令** | text2img / img2img / variations / check |
-| **配置** | `.env` 三项：IMG_BASE_URL / IMG_MODEL / IMG_API_KEY（含 OPENAI_* 等别名），用户自备 key |
+| **配置** | `.env` 一项：`IMG_PROVIDER=codex`（不需要 key） |
 | **profile_aware** | true |
-| **自包含** | 需用户配置图像生成 API（OpenAI 兼容 或 apimart） |
+| **自包含** | 需要本机 Codex CLI 并已用 ChatGPT 账号登录 |
 
 > 创建时间: 2026-07-23
 > 用途: 补齐 produce 层通用 AI 生图能力（区别于电商专用 ecom-details-image 与 HTML 渲染类 card-*）

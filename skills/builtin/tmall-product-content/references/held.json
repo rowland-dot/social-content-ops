@@ -1,0 +1,4 @@
+{
+ "ai-image-gen": {"held": true, "until": "Easel issue 95 (image skills fall back to paid generators when the Codex setting is missing) has landed on main"},
+ "skill-quality-gate": {"held": true, "until": "Easel issue 94 (quality check reads wording printed on a pack) has landed on main"}
+}

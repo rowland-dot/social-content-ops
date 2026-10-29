@@ -6,6 +6,7 @@
  */
 
 import kleur from "kleur";
+import { likesPlusFavourites } from "./top-notes.js";
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -70,6 +71,8 @@ export interface CommentPatterns {
 }
 
 export interface RelativePerformance {
+  /** Both sides of this comparison are likes only: the author's post list is not shown to carry favourite counts. */
+  measure: "likes";
   authorPostCount: number;
   authorAvgLikes: number;
   authorMedianLikes: number;
@@ -338,6 +341,7 @@ export function computeRelativePerformance(
 
   if (likesArr.length === 0) {
     return {
+      measure: "likes",
       authorPostCount: 0,
       authorAvgLikes: 0,
       authorMedianLikes: 0,
@@ -364,6 +368,7 @@ export function computeRelativePerformance(
   const multiplier = median > 0 ? round2(thisNoteLikes / median) : 0;
 
   return {
+    measure: "likes",
     authorPostCount: likesArr.length,
     authorAvgLikes: Math.round(avg),
     authorMedianLikes: Math.round(median),
@@ -387,12 +392,13 @@ export function computeViralScore(
   // Hook (0-20): +4 per detected pattern, capped
   const hookScore = Math.min(20, hook.hookPatterns.length * 4);
 
-  // Engagement (0-20): threshold on absolute likes
+  // Engagement (0-20): threshold on absolute likes + favourites
+  const impressions = likesPlusFavourites(engagement);
   let engagementScore = 4;
-  if (engagement.likes >= 500) engagementScore = 8;
-  if (engagement.likes >= 1000) engagementScore = 12;
-  if (engagement.likes >= 5000) engagementScore = 16;
-  if (engagement.likes >= 10000) engagementScore = 20;
+  if (impressions >= 500) engagementScore = 8;
+  if (impressions >= 1000) engagementScore = 12;
+  if (impressions >= 5000) engagementScore = 16;
+  if (impressions >= 10000) engagementScore = 20;
 
   // Relative (0-20): threshold on viral multiplier
   let relativeScore = 4;
@@ -515,7 +521,7 @@ export function formatViralAnalysis(a: ViralAnalysis): string {
   // Relative Performance
   if (a.relative.authorPostCount > 0) {
     lines.push("");
-    lines.push(hr("vs Author Baseline"));
+    lines.push(hr("vs Author Baseline (likes only)"));
     lines.push("");
     lines.push(
       `  Author avg: ${fmtNum(a.relative.authorAvgLikes)} ♥  |  ` +

@@ -6,18 +6,19 @@
 哪些关键词参与度天花板最高？哪些饱和/未被满足？
 - 命令：`redbook search "keyword" --sort popular --json`（每个关键词一次）
 - 提取 `items[].note_card.interact_info` 的 `liked_count`/`collected_count`/`comment_count` + `user.nickname`
-- 解读：Top1 ceiling = `items[0]` 点赞（已验证需求）；Top10 avg = 前 10 均值。高 Top1 低 Top10 = 单个异常值主导，难竞争；高 Top10 avg = 需求稳定，易切入。
+- 排序与计量：一条笔记的总印象分 = 点赞 + 收藏（`liked_count + collected_count`，负责人，2026-10-28），不是单看点赞，也不是点赞 + 评论。搜索结果按这个分重新排序后再取 Top1 / Top10。
+- 解读：Top1 ceiling = 排序后第一条的点赞 + 收藏（已验证需求）；Top10 avg = 前 10 均值。高 Top1 低 Top10 = 单个异常值主导，难竞争；高 Top10 avg = 需求稳定，易切入。
 - 输出：关键词 × 参与度表，按 Top1 ceiling 排序。
 
 ## Module B：跨主题热力图
 哪些 主题×场景 交叉有需求？内容缺口在哪？
 - 命令：`redbook search "base topic + scene" --sort popular --json`（每个场景组合一次）
-- 提取每个组合的 Top1 `liked_count`。高 Top1 = 已验证需求；零/极低 = 内容缺口（机会或无需求）。
+- 提取每个组合的 Top1 点赞 + 收藏（`liked_count + collected_count`）。高 Top1 = 已验证需求；零/极低 = 内容缺口（机会或无需求）。
 - 输出：Base × Scene ASCII 热力图。
 
 ## Module C：参与度信号分析
 每个关键词是什么内容类型？工具/认知/娱乐？
-- 命令：用 A 的搜索结果，或单篇 `redbook analyze-viral "<url>" --json`（含预计算 `engagement.*Ratio`）
+- 命令：用 A 的搜索结果，或单篇 `redbook read "<url>" --json`，比率自己按 platform-signals.md 算（`analyze-viral` 被守卫拒绝）
 - 套用 platform-signals.md 的比率基准。输出：每关键词/每篇分类。
 
 ## Module D：创作者发现与画像
@@ -28,31 +29,32 @@
 
 ## Module D2：已知账号报告
 已有 KOS/KOC 账号 ID 列表时用，勿用关键词搜索近似（会引入无关帖）。
-- `redbook account-report --file accounts.txt --month YYYY-MM --json`（换行分隔 ID/profile URL，`#` 注释忽略；优先带 `xsec_token` 的 profile URL）
-- 默认每账号只取首页；`complete:false` 表示还有更多页。仅在账号列表小且用户明确要全量时用 `--all`，否则 `--max-pages <n>`。
+- `redbook account-report "<profileUrl>" --month YYYY-MM --json`（一次一个账号；`--file`、多个账号被守卫拒绝；优先带 `xsec_token` 的 profile URL）
+- 每账号的 Top 笔记：`topByLikesPlusFavourites` 按点赞 + 收藏排名（原 `topByLikes` 只看点赞，已改名）；`topByEngagement` 是另一个单独的量（点赞 + 评论 + 收藏 + 分享），保持不变。
+- 每次只取首页；`complete:false` 表示还有更多页，守卫拒绝 `--all` 和 `--max-pages` 大于 1，需要更多页时改用 `user-posts`，一次一页。
 
 ## Module E：内容形态分解
 图文 vs 视频，哪个对该主题表现更好？
-- `redbook search "keyword" --type image --sort popular --json` 与 `--type video`，对比两组 Top1/Top10 avg 的 `liked_count`/`collected_count`。
+- `redbook search "keyword" --type image --sort popular --json` 与 `--type video`，对比两组 Top1/Top10 avg 的点赞 + 收藏（`liked_count + collected_count`）。
 
 ## Module F：机会评分
 该做哪些关键词？最佳投入产出比在哪？
-- 输入：Module A 矩阵。Demand = Top1 点赞天花板；Competition = Top10 中 >1K 点赞的密度；Score = Demand ×（1/竞争密度）。
-- 分级（按 Top1 点赞）：S >10万 / A 2万–10万 / B 5千–2万 / C <5千。
+- 输入：Module A 矩阵。Demand = Top1 点赞 + 收藏天花板；Competition = Top10 中点赞 + 收藏 >1K 的密度；Score = Demand ×（1/竞争密度）。
+- 分级（按 Top1 点赞 + 收藏，档位数字不变）：S >10万 / A 2万–10万 / B 5千–2万 / C <5千。
 
 ## Module G：受众推断
-- 输入：Module C 比率 + `analyze-viral` 的 `comments.themes[]`/`questionRate` + 内容模式。
+- 输入：Module C 比率 + `comments` 的评论内容自行归纳主题和提问率 + 内容模式。
 - 规则：高收藏+高提问率→学习型；高评论+情感主题→社区型；高分享→身份认同型；评论语言→年龄/教育信号。
 
 ## Module H：内容头脑风暴
 - 输入：F 机会分 + G 画像 + B 热力图缺口。每个 idea 指定：目标关键词 / hook 角度 / 内容类型（工具·认知·娱乐）/ 形态（图文·视频）/ 参与目标（按 Top10 avg）/ 竞品参考 URL。
 
 ## Module I：评论洞察
-- 用 `redbook comments "<url>" --all --json` 识别高频问题、争议点、购买意图与未满足需求，只输出洞察和候选回复草稿。
+- 用 `redbook comments "<url>" --json`（一页一次，`--all` 被守卫拒绝）识别高频问题、争议点、购买意图与未满足需求，只输出洞察和候选回复草稿。
 - 如需真正评论或回复，将候选内容交给 `skill-xhs-comment-reply`；本 Skill 不执行任何互动写操作。
 
 ## Module J：爆款复刻
-- `redbook search "keyword" --sort popular` 找 top → `redbook viral-template "<url1>" "<url2>" "<url3>" --json` 提取结构模板。
+- `redbook search "keyword" --sort popular` 找 top → 对每篇分开 `read`、`comments`（`viral-template` 被守卫拒绝），自己提取结构模板。
 - 输出 `ContentTemplate`：`dominantHookPatterns` / `titleStructure` / `bodyStructure.lengthRange` / `engagementProfile.type` / `audienceSignals.commonThemes`。喂给 Module H 作结构约束。
 
 ## Module K：互动机会识别
@@ -65,7 +67,7 @@
 
 ## Module M：笔记限流检测（限流检测）
 XHS 给每篇笔记隐藏的 `level` 字段控制推荐分发，UI 从不显示。
-- `redbook health --all --json`
+- `redbook health --json`（`--all` 被守卫拒绝）
 
 | Level | 状态 | 含义 |
 |-------|------|------|
@@ -88,10 +90,10 @@ XHS 给每篇笔记隐藏的 `level` 字段控制推荐分发，UI 从不显示�
 | 内容规划 | A → B → E → F → H |
 | 创作者竞品分析 | A → D |
 | 完整细分分析 | A → B → C → D → E → F → G → H |
-| 单篇深挖 | `analyze-viral "<url>"`（一次返回 hook/比率/评论主题/基线对比/0-100 分） |
-| 爆款研究→内容模板 | search → `viral-template` |
+| 单篇深挖 | 分开的 `read` / `comments` / `user-posts`（`analyze-viral` 被守卫拒绝） |
+| 爆款研究→内容模板 | search → 逐篇 `read` / `comments` |
 | 评论洞察 | I（只读分析 → 候选回复） |
 | 内容复刻 | A → J → H → L |
 | 创作素材准备 | A → J → H → L（发布转交 publisher） |
-| 账号健康监控 | M（周期跑 `health --all`） |
+| 账号健康监控 | M（周期跑 `health`） |
 | 全面分析 | A → C → I → J → K → M |

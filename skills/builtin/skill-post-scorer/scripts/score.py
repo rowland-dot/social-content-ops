@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """score.py — skill-post-scorer 的确定性历史数据分析.
 
-把"互动分 = 点赞 + 评论×3 / 筛 Top 10%"从 LLM 心算固化为代码。
+把"互动分 = 点赞 + 收藏 / 筛 Top 10%"从 LLM 心算固化为代码。
 LLM 拿到 Top 10% 帖子及其分布后，负责提炼共性特征、给草稿五维评分。
 
 子命令:
   top   读历史帖子 JSON，算每条互动分，输出 Top N%（默认 10%）门槛、
         Top 帖子列表与分布统计（均值/中位数/最高/最低）
 
-输入 JSON（--input）：历史帖子数组，每条含点赞与评论字段，形如
-  [{"title":"...", "likes":808, "comments":355}, ...]
-兼容字段别名：likes/reactions/点赞、comments/评论。
+输入 JSON（--input）：历史帖子数组，每条含点赞与收藏字段，形如
+  [{"title":"...", "likes":808, "favourites":355}, ...]
+兼容字段别名：likes/reactions/点赞、
+favourites/favorites/collects/collected_count/收藏。缺收藏字段按 0 计。
 """
 from __future__ import annotations
 
@@ -22,8 +23,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "shared" / "scripts"))
 import social_stats as ss  # noqa: E402
 
-# 互动分权重：点赞×1 + 评论×3（评论代表深度互动，算法权重更高）
-COMMENT_WEIGHT = 3.0
+# 互动分 = 点赞 + 收藏（负责人，2026-10-28：点赞与收藏合并作为一条帖子的总印象分）
+LIKE_FIELDS = ("likes", "reactions", "点赞")
+FAVOURITE_FIELDS = ("favourites", "favorites", "collects", "collected_count", "收藏")
 
 
 def load_posts(path: Path) -> list:
@@ -48,12 +50,10 @@ def _pick(post, *names):
 
 
 def engagement(post) -> float:
-    """互动分 = 点赞 + 评论×3。缺失字段当 0。"""
-    likes = _pick(post, "likes", "reactions", "点赞") or 0
-    comments = _pick(post, "comments", "评论") or 0
-    # 复用 social_stats.engagement_score，用权重实现 点赞×1 + 评论×3
-    return ss.engagement_score(likes=likes, comments=comments,
-                               weights={"comments": COMMENT_WEIGHT})
+    """互动分 = 点赞 + 收藏。缺失字段当 0。"""
+    likes = _pick(post, *LIKE_FIELDS) or 0
+    favourites = _pick(post, *FAVOURITE_FIELDS) or 0
+    return float(likes + favourites)
 
 
 def cmd_top(args):
@@ -77,7 +77,7 @@ def cmd_top(args):
             "top_pct": args.top_pct,
             "top_count": top_n,
             "top_threshold_score": threshold,
-            "engagement_formula": "点赞 + 评论×3",
+            "engagement_formula": "点赞 + 收藏（likes + favourites）",
             "avg_score": ss.mean(scores),
             "median_score": ss.median(scores),
             "max_score": max(scores),
@@ -86,8 +86,8 @@ def cmd_top(args):
         },
         "top_posts": [
             {"title": r.get("title"),
-             "likes": _pick(r, "likes", "reactions", "点赞"),
-             "comments": _pick(r, "comments", "评论"),
+             "likes": _pick(r, *LIKE_FIELDS),
+             "favourites": _pick(r, *FAVOURITE_FIELDS),
              "engagement_score": r["engagement_score"]}
             for r in top
         ],

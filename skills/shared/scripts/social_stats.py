@@ -86,6 +86,18 @@ def engagement_score(views: Optional[float] = 0, likes: Optional[float] = 0,
     return sum(w[k] * (vals[k] or 0) for k in w)
 
 
+def engagement_score_if_any(views: Optional[float] = None, likes: Optional[float] = None,
+                            comments: Optional[float] = None, shares: Optional[float] = None,
+                            weights: Optional[dict] = None) -> Optional[float]:
+    """同 engagement_score，但四项指标全缺失（从未采集）时返回 None 而不是 0。
+
+    自动落盘的发布记录没有点赞/浏览；把它们算成 0 分会拉低所有平均值。
+    返回 None 的记录会被 mean/group_aggregate 排除。"""
+    if all(v is None for v in (views, likes, comments, shares)):
+        return None
+    return engagement_score(views, likes, comments, shares, weights)
+
+
 # --------------------------------------------------------------------------- #
 # 变化率：环比 / 同比 / 日增长
 # --------------------------------------------------------------------------- #
@@ -286,6 +298,9 @@ def _selftest():
     assert engagement_rate(1, 0) is None
     assert engagement_score(views=100, likes=10, comments=5, shares=2) == \
         100 * 0.1 + 10 + 5 * 2 + 2 * 3
+    assert engagement_score_if_any(None, None, None, None) is None  # 没采集 ≠ 0 分
+    assert engagement_score_if_any(likes=0) == 0  # 采集到 0 才是 0 分
+    assert engagement_score_if_any(likes=10, comments=5) == 10 + 5 * 2
 
     assert pct_change(120, 100) == 20.0
     assert pct_change(80, 100) == -20.0

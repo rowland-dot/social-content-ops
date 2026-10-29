@@ -8,10 +8,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+
+from easel.direct_api import read_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROFILES_DIR = PROJECT_ROOT / "profiles"
+ENV_FILE = PROJECT_ROOT / ".env"
+PROFILE_DIRS_SETTING = "EASEL_PROFILE_DIRS"
 
 # 六维画像文件的固定顺序（identity/style/... 先，其余 .md 追加在后）
 _FILE_ORDER = [
@@ -20,19 +25,53 @@ _FILE_ORDER = [
 ]
 
 
+def external_profile_dirs(settings: Mapping[str, str] | None = None) -> dict[str, Path]:
+    """Profiles that live outside ``PROFILES_DIR``: name -> folder, from ``EASEL_PROFILE_DIRS``.
+
+    The git-ignored setting holds ``name=/absolute/folder`` entries separated by ``;``, so a
+    machine path and a client name stay out of tracked code. ``settings`` is a harness
+    request's environment; without it the project ``.env`` and the process environment are read.
+    """
+    if settings is None:
+        settings = read_settings(ENV_FILE)
+    mapping: dict[str, Path] = {}
+    for entry in settings.get(PROFILE_DIRS_SETTING, "").split(";"):
+        name, _, folder = entry.partition("=")
+        name, folder = name.strip(), folder.strip()
+        if valid_persona_name(name) and folder:
+            mapping[name] = Path(folder)
+    return mapping
+
+
+def profile_dir(name: str, settings: Mapping[str, str] | None = None) -> Path:
+    """The one place a profile name becomes a folder: its mapped folder, else under PROFILES_DIR."""
+    return external_profile_dirs(settings).get(name) or PROFILES_DIR / name
+
+
+def is_external_profile(name: str, settings: Mapping[str, str] | None = None) -> bool:
+    return name in external_profile_dirs(settings)
+
+
+def profile_problem(name: str) -> str:
+    """Why a mapped profile cannot be used (its folder is missing); empty when fine or unmapped."""
+    folder = external_profile_dirs().get(name)
+    if folder is not None and not folder.is_dir():
+        return f"画像「{name}」映射到的目录不存在：{folder}"
+    return ""
+
+
 def list_personas() -> list[str]:
-    """列出所有可用画像目录名（排除下划线开头的内部目录）。"""
-    if not PROFILES_DIR.is_dir():
-        return []
-    return sorted(
-        d.name for d in PROFILES_DIR.iterdir()
-        if d.is_dir() and valid_persona_name(d.name)
-    )
+    """列出所有可用画像目录名（排除下划线开头的内部目录；映射的外部画像只出现一次）。"""
+    names = {name for name, folder in external_profile_dirs().items() if folder.is_dir()}
+    if PROFILES_DIR.is_dir():
+        names.update(d.name for d in PROFILES_DIR.iterdir()
+                     if d.is_dir() and valid_persona_name(d.name))
+    return sorted(names)
 
 
 def profile_exists(name: str) -> bool:
     """检查画像目录是否存在，拒绝把路径片段当作画像名。"""
-    return valid_persona_name(name) and (PROFILES_DIR / name).is_dir()
+    return valid_persona_name(name) and profile_dir(name).is_dir()
 
 
 def valid_persona_name(name: str) -> bool:
@@ -50,17 +89,17 @@ def load_profile_text(name: str) -> str:
     """读取画像文件夹，按固定顺序拼接所有非空 .md。画像不存在返回空串。"""
     if not valid_persona_name(name):
         return ""
-    profile_dir = PROFILES_DIR / name
-    if not profile_dir.is_dir():
+    folder = profile_dir(name)
+    if not folder.is_dir():
         return ""
     parts: list[str] = []
     for filename in _FILE_ORDER:
-        filepath = profile_dir / filename
+        filepath = folder / filename
         if filepath.is_file():
             text = filepath.read_text(encoding="utf-8").strip()
             if text:
                 parts.append(text)
-    for filepath in sorted(profile_dir.glob("*.md")):
+    for filepath in sorted(folder.glob("*.md")):
         if filepath.name not in _FILE_ORDER:
             text = filepath.read_text(encoding="utf-8").strip()
             if text:
@@ -74,6 +113,14 @@ def persona_prefix(name: str | None) -> str:
     明确账号记忆作用域，避免 OpenClaw 的全局 MEMORY.md 污染并行画像会话。
     """
     if name and profile_exists(name):
+        if is_external_profile(name):
+            folder = profile_dir(name)
+            return (
+                f"我当前使用的画像是「{name}」。该画像的实际文件夹是 {folder}，"
+                "技能里 profiles/<画像>/ 的路径一律以这个实际文件夹为准。"
+                f"本会话的账号长期记忆仅使用 {folder}/memory.md，"
+                "不要使用工作区全局 MEMORY.md 作为账号记忆。"
+            )
         return (
             f"我当前使用的画像是「{name}」。"
             f"本会话的账号长期记忆仅使用 profiles/{name}/memory.md，"

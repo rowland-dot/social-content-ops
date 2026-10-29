@@ -59,3 +59,25 @@ test('approval card grids can shrink and wrap commands without clipping their co
   assert.match(rule('.question-card__options'), /minmax\(min\(150px,\s*100%\),\s*1fr\)/);
   assert.match(rule('.question-card__custom input'), /min-width:\s*0/);
 });
+
+const asked = { id: 'q-1', expiresAtMs: 1_000_000 + 125_000, questions: [{
+  questionId: 'q1', header: '上图文字', question: '上图文字用哪个方案？', options: [{ label: '方案 A' }, { label: '方案 B' }] }] };
+
+test('a live box shows its time left, counting down to the second', () => {
+  const html = nowMs => renderToStaticMarkup(React.createElement(component.exports.default, { questions: [asked], nowMs }));
+  assert.match(html(1_000_000), /question-card__timer">剩余 2:05</);
+  assert.match(html(1_000_000 + 124_001), /剩余 0:01</);
+});
+
+test('a box past its deadline is marked expired in Chinese and says what a pick will do', () => {
+  const rendered = renderToStaticMarkup(React.createElement(component.exports.default, { questions: [asked], nowMs: 1_000_000 + 125_000 }));
+  assert.doesNotMatch(rendered, /question-card__timer/);
+  assert.match(rendered, /question-card__expired">这道题已过期/);
+  assert.match(rendered, /普通聊天消息/);
+});
+
+test('a late answer names the question it answers', () => {
+  assert.equal(
+    component.exports.lateAnswerMessage(asked, { q1: ['方案 B'] }),
+    '回答你之前已过期的提问：\n「上图文字用哪个方案？」→ 我选：方案 B');
+});

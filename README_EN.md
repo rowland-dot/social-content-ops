@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <em>This is a modified copy of <a href="https://github.com/ZJU-REAL/Easel">ZJU-REAL/Easel</a>, used under the Apache License 2.0 (see <a href="LICENSE">LICENSE</a>). Files changed from upstream are changed in this repository's history; Easel's own notices are kept.</em>
+</p>
+
+<p align="center">
   Your personal, continuously evolving social media content assistant.<br>
   Start with an idea, then discover, plan, create, publish, and learn.
 </p>

@@ -46,7 +46,9 @@ if str(PROJECT_ROOT / "scripts") not in sys.path:
 from easel.gateway_endpoint import chat_completions_url, healthz_url, port_source
 from easel.openclaw_cmd import openclaw_base_cmd
 from easel.persona import (load_profile_text, persona_prefix, chat_turn_message,
-                           profile_exists, valid_persona_name, _FILE_ORDER)
+                           profile_exists, valid_persona_name, _FILE_ORDER,
+                           profile_dir, is_external_profile, profile_problem)
+from easel.persona import list_personas as _persona_names
 from easel.timeouts import TIMEOUT_CHAT, TIMEOUT_DIRECT, TIMEOUT_PRODUCE
 from easel.manual_publish import build_package, publishing_mode
 from easel.direct_api import (DirectAPIError, SYSTEM_PROMPT, api_config, api_mode,
@@ -56,13 +58,15 @@ from easel.harnesses import store as harness_store
 from easel.harnesses.base import HarnessError, RunRequest
 try:
     from easel.gateway_questions import (
-        GatewayClient, GatewayQuestionError, GatewayUnsupportedError,
-        question_bridge_supported)
+        GatewayClient, GatewayQuestionError, GatewayQuestionExpiredError,
+        GatewayUnsupportedError, question_bridge_supported, question_events)
 except Exception:  # 兼容缺失依赖：问答题桥接降级为关闭
     GatewayClient = None  # type: ignore
     GatewayQuestionError = None  # type: ignore
+    GatewayQuestionExpiredError = None  # type: ignore
     GatewayUnsupportedError = None  # type: ignore
     question_bridge_supported = None  # type: ignore
+    question_events = None  # type: ignore
 
 # 问答题桥接的一次性诊断标记：连接失败/旧版本无 question RPC 的告警每进程只打一次，
 # 避免每开一个新会话就在后端刷一行同样的错（用户反馈的噪音）。
@@ -540,21 +544,17 @@ async def local_write_guard(request: Request, call_next):
 
 
 def list_personas() -> list[dict]:
-    if not PROFILES_DIR.is_dir():
-        return []
     result = []
-    for d in sorted(PROFILES_DIR.iterdir()):
-        if not d.is_dir() or not valid_persona_name(d.name):
-            continue
+    for name in _persona_names():
         desc = ''
-        identity = d / 'identity.md'
+        identity = profile_dir(name) / 'identity.md'
         if identity.is_file():
             for line in identity.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if line and not line.startswith('#') and not line.startswith('<!--'):
                     desc = line[:80]
                     break
-        result.append({'name': d.name, 'description': desc})
+        result.append({'name': name, 'description': desc})
     return result
 
 
@@ -751,16 +751,21 @@ def _key_configured(key: dict, env: dict[str, str]) -> bool:
     return any(_is_set(env.get(a)) for a in key.get('aliases', []))
 
 
+def _provider_ready(prov: dict, spec: dict, env: dict[str, str]) -> bool:
+    '某 provider 是否可用：required key 齐全；无 key 可填的（keyless，如 chatgpt）仅在被选为默认 provider 时才算。'
+    if prov.get('keyless'):
+        chooser = next((k for k in spec.get('settings', []) if k['env'].endswith('_PROVIDER')), None)
+        return bool(chooser) and (env.get(chooser['env']) or '').strip() == prov['id']
+    return all(_key_configured(k, env) for k in prov['keys'] if k['required'])
+
+
 def _skill_api_configured(skill: str, env: dict[str, str] | None = None) -> bool:
-    'SKILL 是否已具备可用配置：任一 provider 的全部 required key 齐全。'
+    'SKILL 是否已具备可用配置：任一 provider 可用。'
     spec = SKILL_API_REQUIREMENTS.get(skill)
     if not spec:
         return True
     env = _read_env() if env is None else env
-    for prov in spec['providers']:
-        if all(_key_configured(k, env) for k in prov['keys'] if k['required']):
-            return True
-    return False
+    return any(_provider_ready(prov, spec, env) for prov in spec['providers'])
 
 
 # .env 的值是裸写 `KEY=value` 的，而 setup.sh:310/450 会 `source .env`。bash 在赋值右侧
@@ -1322,14 +1327,15 @@ def _valid_persona_name(name: str) -> bool:
 
 
 def _persona_file_path(name: str, filename: str) -> Path:
-    """校验画像名/文件名，返回 profiles/<name>/<filename> 的安全路径。"""
+    """校验画像名/文件名，返回画像文件夹（本地 profiles/<name> 或映射的外部文件夹）内的安全路径。"""
     if not _valid_persona_name(name):
         raise HTTPException(400, "画像名非法")
     if not filename.endswith(".md") or "/" in filename or "\\" in filename or filename.startswith("."):
         raise HTTPException(400, "文件名非法")
-    pd = (PROFILES_DIR / name).resolve()
+    pd = profile_dir(name).resolve()
     fp = (pd / filename).resolve()
-    if pd != fp.parent or PROFILES_DIR.resolve() not in pd.parents:
+    # 本地画像必须解析后仍在 profiles 之下；映射的外部画像本身就是被允许的文件夹。
+    if pd != fp.parent or not (is_external_profile(name) or PROFILES_DIR.resolve() in pd.parents):
         raise HTTPException(403, "非法路径")
     return fp
 
@@ -1338,8 +1344,8 @@ def _persona_file_path(name: str, filename: str) -> Path:
 async def api_persona_files(name: str):
     """返回画像六维文件原文（按固定顺序 + 其余 .md），供在线编辑。"""
     if not profile_exists(name):
-        raise HTTPException(404, "画像不存在")
-    pd = PROFILES_DIR / name
+        raise HTTPException(404, profile_problem(name) or "画像不存在")
+    pd = profile_dir(name)
     ordered = list(_FILE_ORDER) + sorted(f.name for f in pd.glob("*.md") if f.name not in _FILE_ORDER)
     files = []
     for fn in ordered:
@@ -1370,6 +1376,9 @@ async def api_persona_delete(name: str):
     """删除整个画像目录。"""
     if not _valid_persona_name(name):
         raise HTTPException(400, "画像名非法")
+    if is_external_profile(name):
+        raise HTTPException(409, f"画像「{name}」在映射的外部知识库文件夹里，不能在这里删除；"
+                                 "知识库内容只能通过知识库自己的工具删除（会先留一份副本）。")
     pd = (PROFILES_DIR / name).resolve()
     if PROFILES_DIR.resolve() not in pd.parents or not pd.is_dir():
         raise HTTPException(404, "画像不存在")
@@ -1691,8 +1700,7 @@ def _model_channels(runtime: str | None = None) -> dict:
                 _edit_keys = [k for k in _req if k is not _bk and k is not _mk]
                 _k1 = _edit_keys[0] if _edit_keys else None
                 _k2 = _edit_keys[1] if len(_edit_keys) > 1 else None
-                _ok = all(_is_set(env.get(k["env"])) or any(_is_set(env.get(a)) for a in k.get("aliases", []))
-                          for k in _req)
+                _ok = _provider_ready(_p, _spec, env)
                 _masked = ""
                 if _k1:
                     _raw = env.get(_k1["env"], "")
@@ -3180,7 +3188,7 @@ async def api_chat_job_stream(turn_id: str, after: int = 0):
                     # 转义 → 前端 JSON.parse 拿到字符串而非对象 → ask_user 选项
                     # 卡片渲染成空壳。其余事件存原文/dict，与实时流的 dumps 规则
                     # 一致。因此仅 question 按实时流规则原样透传。
-                    if event["event"] == "question" and isinstance(raw, str):
+                    if event["event"] in ("question", "question_closed") and isinstance(raw, str):
                         data_out = raw
                     else:
                         data_out = json.dumps(raw, ensure_ascii=False)
@@ -3531,8 +3539,7 @@ async def api_chat_stream(req: ChatRequest):
                 try:
                     while proc.poll() is None:
                         try:
-                            items = client.list_questions(
-                                session_key=f"agent:main:{sk}", status="pending")
+                            events = question_events(client, f"agent:main:{sk}", pushed)
                         except GatewayUnsupportedError as e:
                             # 连上了但没有 question RPC（版本判断漏网时的兜底）：熔断，安静退出。
                             _QBRIDGE_DISABLED = True
@@ -3544,15 +3551,8 @@ async def api_chat_stream(req: ChatRequest):
                         except Exception:
                             time.sleep(2)
                             continue
-                        for it in items:
-                            qid = it.get("id")
-                            if qid and qid not in pushed:
-                                pushed.add(qid)
-                                _emit("question", json.dumps({
-                                    "id": qid,
-                                    "questions": it.get("questions", []),
-                                    "expiresAtMs": it.get("expiresAtMs"),
-                                }, ensure_ascii=False))
+                        for ev in events:
+                            _emit(ev["kind"], json.dumps(ev["payload"], ensure_ascii=False))
                         time.sleep(2)
                 finally:
                     try:
@@ -3686,8 +3686,8 @@ async def api_chat_stream(req: ChatRequest):
                     to_client("thinking", item["text"])
                 elif item["t"] == "activity":
                     to_client("activity", item["text"])
-                elif item["t"] == "question":
-                    to_client("question", item["text"])
+                elif item["t"] in ("question", "question_closed"):
+                    to_client(item["t"], item["text"])
             rc = proc.poll()
             # 等 stdout 读完（stopReason 行在进程收尾时才打印，避免 _tail 先发 SENTINEL 时漏读）
             if stdout_fut is not None:
@@ -3842,8 +3842,8 @@ async def api_chat_stream(req: ChatRequest):
                 yield {"id": str(item["id"]), "event": "thinking", "data": json.dumps(item["text"], ensure_ascii=False)}
             elif t == "activity":
                 yield {"id": str(item["id"]), "event": "activity", "data": json.dumps(item["text"], ensure_ascii=False)}
-            elif t == "question":
-                yield {"id": str(item["id"]), "event": "question", "data": item["text"]}
+            elif t in ("question", "question_closed"):
+                yield {"id": str(item["id"]), "event": t, "data": item["text"]}
             elif t == "error":
                 yield {"id": str(item["id"]), "event": "error", "data": json.dumps(item["text"], ensure_ascii=False)}
             elif t == "done":
@@ -3884,6 +3884,9 @@ async def api_question_answer(req: QuestionAnswerRequest):
         client.connect()
         result = client.resolve(req.questionId, req.answers or {}, req.resolvedBy)
         return {"ok": True, "result": result}
+    except GatewayQuestionExpiredError:
+        # 题已被取消/过期/不存在：前端据此改走「作为普通聊天消息发给 agent」
+        return {"ok": False, "expired": True, "error": "这道题已过期，答案会作为普通消息发给 AI"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
     finally:
@@ -5151,7 +5154,7 @@ async def api_profile_build(req: ProfileBuildRequest):
     if name.startswith(('.', '_')):
         raise HTTPException(400, '画像名不能以 . 或 _ 开头，请换个开头')
     pd = PROFILES_DIR / name
-    if pd.exists():
+    if pd.exists() or is_external_profile(name):
         raise HTTPException(409, f'画像「{name}」已存在，请换一个名字')
     _write_baseline_profile(name, req.form or {})
     instruction = _form_to_instruction(name, req.form or {})

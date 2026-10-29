@@ -7,7 +7,6 @@ import {
   detectProvider,
   generateImage,
   getDefaultModel,
-  loadEnv,
   normalizeOutputImagePath,
   type CliArgs,
   type Provider,
@@ -22,7 +21,7 @@ Options:
   -p, --prompt <text>            Prompt text
   --promptfiles <files...>       Read prompt from files
   --image <path>                 Output image path (required)
-  --provider openai|gemini-proxy Force provider
+  --provider codex               Codex/ChatGPT subscription (the only route; needs IMG_PROVIDER=codex or this flag)
   -m, --model <id>               Model ID
   --ar <ratio>                   Aspect ratio, e.g. 16:9
   --size <WxH>                   Explicit size, e.g. 1024x1024
@@ -33,8 +32,7 @@ Options:
   -h, --help                     Show help
 
 Environment:
-  OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_IMAGE_MODEL
-  GEMINI_PROXY_API_KEY / GEMINI_PROXY_BASE_URL / GEMINI_PROXY_IMAGE_MODEL`);
+  IMG_PROVIDER=codex`);
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -105,7 +103,7 @@ function requireValue(value: string | undefined, flag: string): string {
 }
 
 function requireProvider(value: string): Provider {
-  if (value === "openai" || value === "gemini-proxy") return value;
+  if (value === "openai" || value === "gemini-proxy" || value === "codex") return value;
   throw new Error(`Invalid provider: ${value}`);
 }
 
@@ -132,9 +130,9 @@ async function main(): Promise<void> {
     throw new Error("--image is required");
   }
 
-  await loadEnv();
-  const prompt = await buildPrompt(args);
+  // Issue 95: only the Codex route exists and it has no key to load; refuse before reading any yaml.
   const provider = detectProvider(args);
+  const prompt = await buildPrompt(args);
   const model = args.model || getDefaultModel(provider);
   const outputPath = normalizeOutputImagePath(args.imagePath);
 

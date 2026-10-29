@@ -91,8 +91,9 @@ jobs:
         with:
           scandir: '.'
           severity: warning
-          # 技能自带的 vendor 脚本不在本仓库维护范围内
-          ignore_paths: skills/builtin/video-production/vendor
+          # 技能自带的 vendor 脚本不在本仓库维护范围内；archive/ 是按日期冻结的旧技能备份（备份规则禁止改动），
+          # pytest.ini 同样跳过它
+          ignore_paths: skills/builtin/video-production/vendor archive
 
       # PowerShell 侧：解析 + 静态分析。作者的开发机是 Linux，改 setup.ps1 没法本地验证，
       # 这里是唯一的把关点，所以 Error 级别直接判失败。

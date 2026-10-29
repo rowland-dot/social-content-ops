@@ -260,11 +260,38 @@ def _concat_mp3(parts: list[Path], out: Path) -> None:
                 _die(f"ffmpeg 拼接失败:\n{proc.stderr.strip()}", code=4)
 
 
+def _write_srt(cues: list[tuple[str, float, float]], dst: Path) -> None:
+    dst.write_text("\n".join(f"{i}\n{_srt_ts(a)} --> {_srt_ts(b)}\n{s}\n"
+                             for i, (s, a, b) in enumerate(cues, 1)), encoding="utf-8")
+
+
+def _run_chatgpt(text: str, out: Path, fmt: str, subtitle: Path | None, voice: str | None) -> None:
+    """ChatGPT 订阅的「朗读」（无 key）：整篇文案交给 chatgpt_voice 自己切块，不逐句调用——
+    每次调用是一整趟浏览器往返。分句 SRT 在块内按字数分摊块的真实时长。"""
+    import chatgpt_voice as cv
+    try:  # 没给声线 → 旁白默认设置 → cove；给了不认识的 → 直接报错，不换声线、也不退回 edge
+        chosen = cv.resolve_voice(voice or (os.environ.get("VOICE_NARRATOR_VOICE_ID") or "").strip() or None)
+    except cv.ChatGPTVoiceError as exc:
+        _die(str(exc), code=2)
+    with tempfile.TemporaryDirectory() as d:
+        target = out if fmt == "mp3" else Path(d) / "joined.mp3"
+        try:
+            cues = cv.synthesize(text, target, chosen)
+        except cv.ChatGPTVoiceError as exc:
+            raise ClosedTTSError(str(exc)) from exc
+        if subtitle:
+            _write_srt(cues, subtitle)
+        if fmt != "mp3":
+            _transcode(target, out, fmt)
+
+
 def _run_closed(text: str, out: Path, fmt: str, subtitle: Path | None, voice: str | None) -> None:
     """闭源云 TTS 口播：按句 voice_clone 合成 → 拼接 → 按各句真实时长写分句 SRT。失败抛 ClosedTTSError。"""
     provider = _closed_provider()
     if not provider:
         raise ClosedTTSError("未配置 VOICE_PROVIDER")
+    if provider == "chatgpt":
+        return _run_chatgpt(text, out, fmt, subtitle, voice)
     vc = Path(__file__).resolve().parent / "voice_clone.py"
     vid = _closed_voice_id(voice)
     sents = _split_sentences(text) or [text.strip()]
@@ -329,16 +356,17 @@ def cmd_speak(args) -> int:
             print(f"⚠️ 闭源配音失败（{e}）→ 回退 edge-tts（AI 味，仅兜底）。", file=sys.stderr)
 
     # edge-tts 原生出 mp3；非 mp3 时先合成临时 mp3 再转码。
+    edge_voice = args.voice or DEFAULT_VOICE  # --voice 不给时是 None（给闭源路线区分「没要求」），edge 用自己的默认
     if fmt == "mp3":
         _run_edge_tts(
-            text, out, voice=args.voice, rate=args.rate, volume=args.volume,
+            text, out, voice=edge_voice, rate=args.rate, volume=args.volume,
             pitch=args.pitch, subtitle=subtitle, proxy=args.proxy,
         )
     else:
         with tempfile.TemporaryDirectory() as d:
             tmp_mp3 = Path(d) / "tts.mp3"
             _run_edge_tts(
-                text, tmp_mp3, voice=args.voice, rate=args.rate,
+                text, tmp_mp3, voice=edge_voice, rate=args.rate,
                 volume=args.volume, pitch=args.pitch, subtitle=subtitle,
                 proxy=args.proxy,
             )
@@ -347,7 +375,7 @@ def cmd_speak(args) -> int:
     dur = _probe_duration(out)
     kb = out.stat().st_size / 1024
     dur_str = f"{dur:.1f}s" if dur >= 0 else "时长未知(无 ffprobe)"
-    print(f"✅ {out}  ({kb:.0f} KB, {dur_str}, 音色 {args.voice})")
+    print(f"✅ {out}  ({kb:.0f} KB, {dur_str}, 音色 {edge_voice})")
     if subtitle:
         print(f"✅ 字幕 {subtitle}")
     return 0
@@ -432,8 +460,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("-f", "--file", help="从文本文件读取内容（长文本推荐）")
     p.add_argument("-o", "--output", required=True,
                    help="输出音频路径（扩展名决定格式，默认 mp3）")
-    p.add_argument("-v", "--voice", default=DEFAULT_VOICE,
-                   help=f"音色（edge 传音色名；闭源传 voice-id 如 FunAudioLLM/CosyVoice2-0.5B:alex）")
+    p.add_argument("-v", "--voice", default=None,
+                   help=f"音色（edge 传音色名，默认 {DEFAULT_VOICE}；闭源传 voice-id 如 FunAudioLLM/CosyVoice2-0.5B:alex；"
+                        "ChatGPT 朗读传设置页上的名字如 Sol、Maple，不给就是 Cove）")
     p.add_argument("--engine", choices=["auto", "closed", "edge"], default="auto",
                    help="配音引擎：auto=配了 VOICE_PROVIDER 走闭源(好嗓子)否则 edge；closed=强制闭源；edge=强制 edge(AI 味)")
     p.add_argument("--rate", help="语速，如 +10%% / -20%%")

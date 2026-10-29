@@ -15,7 +15,7 @@ layer: plan
 
 **关键参考文件：**
 - `references/format-specs.md` -- 尺寸规范、页数限制、文字大小
-- `references/hook-library.md` -- 经过验证的封面 Hook 公式及互动数据
+- `references/hook-library.md` -- 常见封面 Hook 公式及互动倾向（非精确数据）
 - `references/scoring-system.md` -- 互动评分维度与阈值
 
 ## 输入
@@ -45,14 +45,16 @@ layer: plan
 
 - 封面文字不超过 12 个字
 - 必须制造好奇缺口或情绪触发
-- 使用 `references/hook-library.md` 中经过验证的 6 个公式：
+- 使用 `references/hook-library.md` 中的 6 个常见封面模式（互动表现只是倾向，优先选与所研究帖子相符的）：
   - **反常识：** "别再XX了"
   - **数字清单：** "5 个毁掉XX的错误"
   - **对比冲击：** 前后对比的视觉悬念
   - **直击痛点：** "为什么你XX总是失败"（陈述式，不加问号）
   - **颠覆声明：** "这会改变你的一切"
   - **身份认同：** "XX 人必看"（收藏率 + 分享率高）
-- 字体必须大、加粗，在缩略图尺寸下也清晰可读
+- HTML 文字卡和通用卡片封面：字体必须大、加粗，在缩略图尺寸下也清晰可读
+- 照片场景帖封面：字体和样式不按上一条，按 [xhs-reference-visual 的字体和样式 A/B/C](../xhs-reference-visual/references/photo-scene-lettering-picks.md) 由负责人选，允许手写字，不用纯粗黑笔画（负责人，2026-10-28：）
+- 所有封面，含照片场景封面，在缩略图尺寸下都必须清晰可读
 - 封面不放 logo 或品牌标识（会削弱好奇心）
 
 记录选定的 Hook 公式和封面文案。

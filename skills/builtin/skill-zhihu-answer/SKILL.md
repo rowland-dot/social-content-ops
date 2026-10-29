@@ -148,6 +148,9 @@ if (pub) { pub.scrollIntoView({block:'center'}); pub.dispatchEvent(new MouseEven
 
 ## Step 6：发布后留痕
 
+**只有结果的 `outcome` 为 `verified`（脚本退出码 0）才留痕。** `unverified`（没能确认回答已发出）和
+`login_required`（被跳到登录页）都不写发布日志，先手工检查账号的回答列表，确认真发出了再补记。
+
 ```bash
 cd <项目根> && python skills/shared/scripts/persona_gate.py record \
     --topic <主题> --profile <画像> --score <评分> --verdict <pass|warn>

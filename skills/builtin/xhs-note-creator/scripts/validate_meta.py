@@ -5,8 +5,8 @@ Checks (fatal unless noted). Common to both post_format:
 - JSON parses
 - required top-level: title, platform=="小红书", created_at, caption, hashtags
 - title length: 1..30 (warn if >20)
-- caption length: 100..300 (code points)
-- hashtags: 5..8 items, each startswith "#"
+- caption length: 100..1000 (code points); target ~300, warn above 800
+- hashtags: 5..10 items, each startswith "#"
 
 post_format == "image" (default when field absent):
 - card_count + cards required
@@ -20,6 +20,15 @@ post_format == "video":
 - every shot: index int, duration_sec > 0, narration/on_screen_text/visual non-empty,
   cp_len(narration) <= 30, cp_len(on_screen_text) <= 15
 
+Claim record (both post_formats, issue 102): top-level `claims` list is required (empty list = no claims).
+- each entry: `text` (the claim as written in the post) plus EITHER evidence_type + source
+  OR fallback ("removed" | "reworded", reworded also needs `now`, the new wording)
+- an evidenced claim's text, and a reworded entry's `now`, must appear word for word in the post's own text
+  (long draft = the .md at the note folder's top level, caption, cards, shots); a removed claim must not
+- a fetched_reference / user_material source that is a relative path must exist inside the note folder
+
+Creation guide (issue 125): top-level `creation_guide` {path, date} is required: the guide the writer read first.
+
 Exit 0 clean, 1 on errors. Prints one "ERROR:" / "WARN:" per line.
 
 Usage: python3 validate_meta.py path/to/meta.json
@@ -27,12 +36,87 @@ Usage: python3 validate_meta.py path/to/meta.json
 from __future__ import annotations
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 
+EVIDENCE_TYPES = ("brand_document", "fetched_reference", "team_statement", "user_material")
+FALLBACKS = ("removed", "reworded")
+LOCAL_EVIDENCE_TYPES = ("fetched_reference", "user_material")
+
+
 def cp_len(s: str) -> int:
     return len(s or "")
+
+
+def post_text(meta: dict, folder: Path) -> str:
+    """The post's own words: long draft, caption, card title/content, shot narration/on-screen text."""
+    parts = [str(meta.get("caption") or "")]
+    for c in meta.get("cards") or []:
+        if isinstance(c, dict):
+            parts += [str(c.get("title") or ""), str(c.get("content") or "")]
+    for s in meta.get("shots") or []:
+        if isinstance(s, dict):
+            parts += [str(s.get("narration") or ""), str(s.get("on_screen_text") or "")]
+    parts += [m.read_text(encoding="utf-8") for m in sorted(folder.glob("*.md"))]
+    return "\n".join(parts)
+
+
+def is_local_path(source: str) -> bool:
+    return not (source.startswith(("http://", "https://", "/", "~")) or (len(source) > 1 and source[1] == ":"))
+
+
+def check_creation_guide(meta: dict, err) -> None:
+    g = meta.get("creation_guide")
+    if not isinstance(g, dict) or not str(g.get("path") or "").strip():
+        err("missing field: creation_guide (path of the account's creation guide the writer read first, and its date)")
+    elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(g.get("date") or "")):
+        err("creation_guide.date must be YYYY-MM-DD (the guide's last-changed date)")
+
+
+def check_claims(meta: dict, folder: Path, err) -> None:
+    if "claims" not in meta:
+        err("missing field: claims (the claim record; use [] when the post makes no factual claims)")
+        return
+    claims = meta["claims"]
+    if not isinstance(claims, list):
+        err("claims must be list")
+        return
+    text = post_text(meta, folder)
+    for i, c in enumerate(claims):
+        at = f"claims[{i}]"
+        if not isinstance(c, dict) or not str(c.get("text") or "").strip():
+            err(f"{at} needs a non-empty text")
+            continue
+        claim = c["text"]
+        fallback = c.get("fallback")
+        if fallback:
+            if fallback not in FALLBACKS:
+                err(f"{at}.fallback must be one of {FALLBACKS}, got {fallback!r}")
+            elif fallback == "removed":
+                if claim in text:
+                    err(f"{at} is 'removed' but its text is still in the post: {claim!r}")
+            else:
+                now = str(c.get("now") or "").strip()
+                if not now:
+                    err(f"{at} is 'reworded' but has no `now` (the new wording)")
+                elif now not in text:
+                    err(f"{at}.now is not in the post word for word: {now!r}")
+            continue
+        etype, source = c.get("evidence_type"), str(c.get("source") or "").strip()
+        if not etype:
+            err(f"{at} has neither evidence_type+source nor fallback")
+            continue
+        if etype not in EVIDENCE_TYPES:
+            err(f"{at}.evidence_type must be one of {EVIDENCE_TYPES}, got {etype!r}")
+            continue
+        if not source:
+            err(f"{at}.source is empty")
+        elif etype in LOCAL_EVIDENCE_TYPES and is_local_path(source) and not (folder / source).exists():
+            err(f"{at}.source file does not exist in the note folder: {source}")
+        if claim not in text:
+            err(f"{at}.text is not in the post word for word: {claim!r}")
 
 
 def main() -> int:
@@ -75,12 +159,14 @@ def main() -> int:
     cl = cp_len(cap)
     if cl < 100:
         err(f"caption too short ({cl} < 100)")
-    elif cl > 300:
-        err(f"caption too long ({cl} > 300)")
+    elif cl > 1000:
+        err(f"caption too long ({cl} > 1000, Xiaohongshu's limit)")
+    elif cl > 800:
+        warn(f"caption is {cl} chars; recommended range is 300-800")
 
     tags = meta.get("hashtags", [])
-    if not isinstance(tags, list) or not (5 <= len(tags) <= 8):
-        err(f"hashtags must have 5..8 items, got {len(tags) if isinstance(tags, list) else 'n/a'}")
+    if not isinstance(tags, list) or not (5 <= len(tags) <= 10):
+        err(f"hashtags must have 5..10 items, got {len(tags) if isinstance(tags, list) else 'n/a'}")
     else:
         for t in tags:
             if not (isinstance(t, str) and t.startswith("#")):
@@ -139,6 +225,9 @@ def main() -> int:
             if not (isinstance(cards, list) and len(cards) == 1
                     and cards[0].get("type") == "cover"):
                 err("for post_format=video, cards must be omitted or a single cover card")
+
+    check_creation_guide(meta, err)
+    check_claims(meta, p.resolve().parent, err)
 
     for w in warns:
         print(f"WARN:  {w}")

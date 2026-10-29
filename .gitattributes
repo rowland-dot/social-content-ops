@@ -1,0 +1,5 @@
+# Text files are stored with LF line endings whatever each machine's checkout settings say
+# (this PC's Git for Windows has core.autocrlf=true, which would otherwise turn every checkout into CRLF).
+* text=auto eol=lf
+# Left exactly as committed: the Windows start files.
+*.cmd -text

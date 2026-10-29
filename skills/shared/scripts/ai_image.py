@@ -9,6 +9,8 @@
   - apimart.ai 异步轮询 API（提交任务 → 轮询 /tasks/<id> → 下载）
   - 自动检测模式：base_url 含 "apimart" → async，其他 → sync；也可 --mode 强制指定
 
+本项目（issue 95）只走 Codex 订阅：没有 IMG_PROVIDER=codex 时所有出图命令直接停下，下面的 API 配置不再使用。
+
 配置来自环境变量或就近的 .env 文件（当前目录向上查找）：
   - IMG_BASE_URL: API 根地址
   - IMG_MODEL:    图片模型名
@@ -41,8 +43,13 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import codex_image
 from output_paths import validate_output_path
 
+
+DEFAULT_SIZE = "1024x1024"
+# 缺 Pillow（Codex 路线要精确像素尺寸时才用到）的退出码，与 img_enhance.py / meme_ops.py 一致。
+EXIT_MISSING_PACKAGE = 3
 
 ENV_BASE_URL = "IMG_BASE_URL"
 ENV_MODEL = "IMG_MODEL"
@@ -136,7 +143,8 @@ def load_env_file(env_file: Path | None) -> None:
         if not key:
             print(f"警告：.env 第 {line_number} 行缺少变量名，已跳过。", file=sys.stderr)
             continue
-        if key not in os.environ:
+        # 变量存在但为空/纯空白，等同未设置：网关会把启动时 .env 里的空键原样传给每个 agent shell。
+        if not os.environ.get(key, "").strip():
             os.environ[key] = strip_env_value(value)
 
 
@@ -161,6 +169,16 @@ def require_config(name: str) -> str:
         f"也兼容这些变量名：{accepted}。"
     )
     return ""  # 不可达，安抚类型检查
+
+
+def require_codex() -> None:
+    """issue 95：图片只走 Codex 订阅。没有 IMG_PROVIDER=codex 就在任何请求之前停下。
+
+    下面各命令里 Codex 分支之后的付费路线（OpenAI 兼容 / Agnes / apimart）因此不会再运行；
+    代码保留只为方便与上游同步。
+    """
+    if not codex_image.enabled():
+        fail(codex_image.CODEX_ONLY_MESSAGE)
 
 
 def load_and_require() -> tuple[str, str, str, argparse.Namespace | None]:
@@ -535,12 +553,53 @@ def _save_async_images(task_data: dict[str, Any], output: str, fmt: str) -> list
     return paths
 
 
+# ── Codex 订阅路线（IMG_PROVIDER=codex）：不要 key、不走任何按次计费的 API ──
+
+def _codex_generate(args: argparse.Namespace, prompt: str, image: str | list[str] | None,
+                    style_only: bool = False) -> None:
+    images = [image] if isinstance(image, str) else list(image or [])
+    suffix = Path(args.output).suffix.lower()
+    if args.format != "png" or suffix not in ("", ".png"):
+        fail("Codex 订阅路线只产出 PNG，请用 --format png 且输出文件名用 .png。")
+    # 只有调用方明确写了像素尺寸（--size 1080x1920）才保证交付精确尺寸；没写 --size 或写的是
+    # 比例（9:16）就保持老行为：存 Codex 给的原图，一个字节不改。
+    target = codex_image.pixel_size(args.size) if getattr(args, "size_given", False) else None
+    try:
+        identity = codex_image.single_identity(getattr(args, "identity_image", None))
+        base = codex_image.single_base(getattr(args, "base_image", None))
+        states = codex_image.single_states(getattr(args, "state_image", None))
+        codex_image.require_count(args.n)
+        if target:
+            codex_image.require_pillow()  # 出图前先查，别出完图才发现没法缩放
+        ratio = codex_image.ratio_from_size(args.size)
+        print(f"[codex] 经 Codex 订阅出图，共 {args.n} 张（每张约 1~3 分钟）...", file=sys.stderr)
+        blobs = [codex_image.generate_png(prompt, images=images or None, ratio=ratio,
+                                          identity=identity, base=base, style_only=style_only,
+                                          states=states)
+                 for _ in range(args.n)]
+        if target:  # 全部缩放成功后才写文件：一张比例不对，整批都不保存
+            blobs = [codex_image.fit_to_size(blob, *target) for blob in blobs]
+    except codex_image.PillowMissingError as exc:
+        fail(str(exc), EXIT_MISSING_PACKAGE)
+        return
+    except codex_image.CodexImageError as exc:
+        fail(str(exc))
+        return
+    paths = _out_paths(args.output, len(blobs), "png")
+    for path, blob in zip(paths, blobs):
+        path.write_bytes(blob)
+    _print_results(paths)
+
+
 # ── 子命令：text2img ──────────────────────────────────────
 
 def cmd_text2img(args: argparse.Namespace) -> None:
+    require_codex()
     prompt = (args.prompt or "").strip()
     if not prompt:
         fail("prompt 不能为空。")
+    if codex_image.enabled():
+        return _codex_generate(args, prompt, None)
     base_url, model, api_key, _ = load_and_require()
     mode = detect_mode(base_url, args.mode)
     print(f"[text2img] 模式={mode} base_url={base_url} model={model}", file=sys.stderr)
@@ -570,9 +629,41 @@ def cmd_text2img(args: argparse.Namespace) -> None:
 # ── 子命令：img2img ───────────────────────────────────────
 
 def cmd_img2img(args: argparse.Namespace) -> None:
+    require_codex()
     prompt = (args.prompt or "").strip()
     if not prompt:
         fail("prompt 不能为空。")
+    if args.style_image and args.image:
+        fail("--style-image（只借风格、不带商品图）不能和 --image（商品图）一起给；有商品图就把风格参考"
+             "接在 --image 后面。--style-image cannot be combined with --image.")
+    if not args.image and not args.identity_image and not args.style_image:
+        fail("img2img 至少要一张图：--image（商品图），或只给 --identity-image（品牌模特，不画商品），"
+             "或只给 --style-image（风格参考，不画商品）。 img2img needs at least one image.")
+    if args.style_image and not codex_image.enabled():
+        fail("只给风格参考图（--style-image）只有 Codex 订阅路线（IMG_PROVIDER=codex）支持；"
+             "其它路线不收，也不会悄悄丢掉它。The style image needs the Codex route.")
+    if args.state_image and not args.image:
+        fail("--state-image（商品状态的真实图）要和 --image（商品图）一起给。 --state-image needs --image.")
+    if args.state_image and not codex_image.enabled():
+        fail("商品状态参考图（--state-image）只有 Codex 订阅路线（IMG_PROVIDER=codex）支持；"
+             "其它路线不收，也不会悄悄丢掉它。The state image needs the Codex route.")
+    if codex_image.enabled():
+        if args.mask:
+            fail("Codex 订阅路线不支持 --mask 局部编辑。")
+        # 一张或多张：第 1 张是商品，其余是风格参考；只给 --identity-image 就是不带商品的人物卡
+        if args.style_image:  # issue 108：真实包装图层的场景卡，没有商品图
+            return _codex_generate(args, prompt, args.style_image, style_only=True)
+        return _codex_generate(args, prompt, args.image)
+    if args.identity_image:
+        fail("品牌模特的身份参考图（--identity-image）只有 Codex 订阅路线（IMG_PROVIDER=codex）支持；"
+             "其它路线不收，也不会悄悄丢掉它。The identity image needs the Codex route.")
+    if args.base_image:
+        fail("已批准的卡作底图（--base-image）只有 Codex 订阅路线（IMG_PROVIDER=codex）支持；"
+             "其它路线不收，也不会悄悄丢掉它。The base image needs the Codex route.")
+    if len(args.image) > 1:
+        fail("多张 --image（商品图 + 风格参考）只有 Codex 订阅路线（IMG_PROVIDER=codex）支持；"
+             "其它路线一次只收一张。")
+    args.image = args.image[0]
     base_url, model, api_key, _ = load_and_require()
     mode = detect_mode(base_url, args.mode)
     print(f"[img2img] 模式={mode} base_url={base_url} model={model} image={args.image}",
@@ -671,6 +762,10 @@ def _encode_multipart(fields: dict[str, str],
 # ── 子命令：variations ────────────────────────────────────
 
 def cmd_variations(args: argparse.Namespace) -> None:
+    require_codex()
+    if codex_image.enabled():
+        return _codex_generate(
+            args, args.prompt or "generate a variation of the reference image", args.image)
     base_url, model, api_key, _ = load_and_require()
     mode = detect_mode(base_url, args.mode)
     print(f"[variations] 模式={mode} base_url={base_url} model={model} image={args.image}",
@@ -732,6 +827,17 @@ def cmd_variations(args: argparse.Namespace) -> None:
 # ── 子命令：check（离线，不发请求）──────────────────────────
 
 def cmd_check(args: argparse.Namespace) -> None:
+    if codex_image.enabled():
+        ok, detail = codex_image.check()
+        print("=== ai-image 配置检查（离线，不发起任何请求）===")
+        print("  provider = codex（ChatGPT 订阅；不需要 IMG_API_KEY，不按次计费）")
+        print(f"  {'[已就绪]' if ok else '[缺失]'} {detail}")
+        raise SystemExit(0 if ok else 2)
+    print("=== ai-image 配置检查（离线，不发起任何请求）===")
+    print(f"  [缺失] 项目设置里没有 IMG_PROVIDER=codex。{codex_image.CODEX_ONLY_MESSAGE}")
+    print("\n[未就绪] 缺少：IMG_PROVIDER=codex")
+    raise SystemExit(2)
+    # 以下是原来的付费路线检查，已不会运行（issue 95）。
     base_url, base_from = resolve_config(ENV_BASE_URL)
     model, model_from = resolve_config(ENV_MODEL)
     api_key, key_from = resolve_config(ENV_API_KEY)
@@ -786,8 +892,10 @@ def _add_common_output(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--output", "-o", required=True,
                     help="输出路径：目录（多张自动编号）或含扩展名的单文件；必须位于 outputs/<人类可读主题>/。")
     sp.add_argument("--n", type=int, default=1, help="生成数量，默认 1。")
-    sp.add_argument("--size", default="1024x1024",
-                    help="尺寸。同步用像素（1024x1024 等），异步用比例（1:1、16:9 等）。默认 1024x1024。")
+    sp.add_argument("--size", default=None,
+                    help=f"尺寸。同步用像素（1024x1024 等），异步用比例（1:1、16:9 等）。默认 {DEFAULT_SIZE}。"
+                         "Codex 路线：明确写像素尺寸（如 1080x1920）才会缩放、裁边成刚好这个尺寸"
+                         "（需要 Pillow）；不写或写比例则存 Codex 原图。")
     sp.add_argument("--mode", choices=("sync", "async"),
                     help="API 模式。默认按 base_url 自动检测（含 apimart → async）。")
     sp.add_argument("--resolution", default="2k", choices=VALID_RESOLUTIONS,
@@ -814,7 +922,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     p_i2i = sub.add_parser("img2img", help="图生图/图像编辑：--prompt + --image → 新图")
     p_i2i.add_argument("--prompt", required=True, help="编辑/改图指令 Prompt。")
-    p_i2i.add_argument("--image", required=True, help="输入图片路径。")
+    p_i2i.add_argument("--image", action="append", default=[],
+                       help="输入图片路径。Codex 订阅路线可重复给：第 1 张是商品图（原样保留），"
+                            "其余至多 2 张是风格参考（只借光线、场景、构图、字体风格，不带它的商品、"
+                            "人物、手、文字）。品牌自己的模特图不走这里，用 --identity-image。--image 和 --identity-image "
+                            "至少给一个。")
+    p_i2i.add_argument("--style-image", action="append", default=[],
+                       help="风格参考（仅 Codex 订阅路线；至多 2 张；不能和 --image 一起给）：没有商品图时，"
+                            "只借光线、场景、构图、字体风格，不带它的商品、人物、手、文字；提示词写明不画商品和包装。")
+    p_i2i.add_argument("--identity-image", action="append",
+                       help="品牌自己的模特图（身份参考，仅 Codex 订阅路线；至多 1 张）：保持是同一个人，"
+                            "姿势、角度、服装按提示词重画。不算风格参考，也不是多一张 --image。"
+                            "也可以单独给 --identity-image（不给 --image）画不带包装的人物卡：不画商品和包装，"
+                            "除非提示词描述了它们。")
+    p_i2i.add_argument("--base-image", action="append",
+                       help="已批准的卡（底图，仅 Codex 订阅路线；至多 1 张，要和 --image 的商品图一起给）："
+                            "紧跟在商品图后面，画面（手、背景、道具、构图、色调）原样保留，只改提示词点名的地方。"
+                            "不是风格参考，不算 --image，由调用方明确写出，不看图的顺序。")
+    p_i2i.add_argument("--state-image", action="append", default=[],
+                       help="商品状态的真实图（仅 Codex 订阅路线；至多 2 张；要和 --image 的商品图一起给）：这个品牌"
+                            "自己商品的粉末、打开的包装、冲好的饮品的真实样子，只借颜色、质地、清澈度、包装里面的样子，"
+                            "不借它的场景、道具、人物、手、文字。排在风格参考后面、身份参考前面。")
     p_i2i.add_argument("--mask", help="可选遮罩图（仅 OpenAI 同步 /images/edits 局部编辑用）。")
     _add_common_output(p_i2i)
     p_i2i.set_defaults(func=cmd_img2img)
@@ -829,7 +957,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p_chk.add_argument("--env-file", help="指定 .env；默认从当前目录向上查找。")
     p_chk.set_defaults(func=cmd_check)
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if hasattr(args, "size"):
+        # 没写 --size 和写成默认值是两回事（Codex 路线只对明确要的像素尺寸负责），
+        # 所以默认值在解析后才补；其余路线照旧拿到 1024x1024。
+        args.size_given = bool(args.size)
+        args.size = args.size or DEFAULT_SIZE
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:

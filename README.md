@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <em>本项目是 <a href="https://github.com/ZJU-REAL/Easel">ZJU-REAL/Easel</a> 的修改副本，依 Apache License 2.0 使用（见 <a href="LICENSE">LICENSE</a>）。相对上游被改动的文件，改动记录在本仓库的历史里；Easel 自带的声明原样保留。</em>
+</p>
+
+<p align="center">
   你的私人、持续进化的社媒运营助手<br>
   从一个想法开始，完成发现、策划、创作、发布与复盘。
 </p>

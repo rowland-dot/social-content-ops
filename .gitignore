@@ -87,3 +87,9 @@ skills/builtin/video-production/vendor/**/node_modules/
 skills/builtin/video-production/vendor/**/.remotion/
 skills/builtin/video-production/vendor/**/models/
 skills/builtin/video-production/vendor/**/*large-v3*
+
+# Skill backups stay word for word on this PC only (they carry client brand names); see CLAUDE.md
+archive/skill-backups/
+
+# The private work folder: its own git repository (the owner's and the team's working material), never part of this project
+/work/

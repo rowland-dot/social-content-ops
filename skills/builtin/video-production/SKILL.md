@@ -109,7 +109,28 @@ python <ROOT>/skills/builtin/video-production/scripts/video_pipeline.py resume
 | `status` | 进度 / 待作答 / 路径 |
 
 所有命令支持 `--run-dir`（默认最近一次 start）、`--base`（运行态根）、`--sdk`（SDK 路径；默认用内置 `vendor/video-pipeline-sdk`，也可用 `--sdk`/环境变量 `VIDEO_PIPELINE_SDK` 覆盖）。
-默认自动使用内置质量门清单；`--gates` 可覆盖为自定义 JSON（内部支持 `{run_dir}` / `{out_dir}` / `{python}` 占位符自动替换）。空门单或当前阶段无门会失败，不算通过。
+`--gates` 可带质量门清单 JSON；不带就用下面「质量门」一节的默认八件门。
+
+## 质量门（必读：没有门单，产线会在验证步停下）
+
+产线要求每次运行都有门单。SDK 自带的默认门单（`vendor/video-pipeline-sdk/gates/default-gates.json`）大多只查文件在不在，不查画面和声音。所以 `start` 不带 `--gates` 时，自动把本技能的 `default-gates.json`（八件门）写进运行目录的 `gates.json`；自己传 `--gates <文件>` 则以你的为准。**不要删门、不要改成空单。**
+
+| 门 | 阶段 | 读什么 | 谁来备好 |
+|----|------|--------|----------|
+| dup 查重 | 验证（写码后） | `run/artifacts/scenes.json` | 分场步骤已产出 |
+| timeline 分场时间轴 | 验证 | `run/artifacts/scenes.json` | 分场步骤已产出 |
+| layout 排版网格 | 验证 | `run/artifacts/gate-inputs/layout.json` | **写码步骤写** |
+| frames 帧检 | 验证 | `run/artifacts/gate-inputs/composition.json`（`comp` + `frames`），可选 `frame-checks.json` | **写码步骤写** |
+| transitions 转场可感知 | 验证 | 同上 `composition.json`（`comp` + `cuts`） | **写码步骤写** |
+| meta 五件套 | 渲染（成片后） | `run/artifacts/gate-inputs/meta.json` | **写码步骤写** |
+| match 素材↔台词对位 | 渲染 | `run/artifacts/gate-inputs/match.json`，素材在 `run/workdir/public/stock` | **写码步骤写** |
+| audio 响度 | 渲染 | `run/workdir/out/final.mp4` | 渲染产出 |
+
+- 写码步骤要把上表标「写码步骤写」的文件放进 `run/artifacts/gate-inputs/`，再 `touch run/workdir/.build-ok`。各文件的字段看对应脚本开头的用法说明（`vendor/video-pipeline-sdk/gates/check_<门>.py`）；`composition.json` 形如 `{"comp": "合成名", "frames": [60, 120], "cuts": [120, 213]}`。
+- 文件缺了，那一道门就是 **FAIL**，`gate-report.md` 会写明缺哪个文件；不会被跳过，也不会算通过。补上文件后 `resume` 重跑。
+- 渲染阶段成片在 `run/workdir/out/final.mp4`；`out/`（交付目录）要到交付步才有成片，门不要指向那里。
+- 每次运行默认把渲染引擎装进自己的 `workdir`（首次 `npm install` 要几分钟、占几百 MB）。不想装就给 `--config` 一个含 `{"scaffold_install": false}` 的 JSON。
+- 自己写门单时，命令里用占位符：`{python}`（与产线同一个 Python，Linux 上没有裸 `python`）、`{run_dir}`、`{out_dir}`、`{skill_dir}`。
 
 ## 产物
 

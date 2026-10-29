@@ -23,6 +23,7 @@ BGM 自动循环补足并可"闪避"（ducking：旁白说话时自动压低 BGM
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -71,9 +72,31 @@ def _dur(path: Path) -> float:
         return 0.0
 
 
+def _band_db(path: Path, hz: int, start: float, length: float | None = None) -> float:
+    """`hz` 附近窄带内、从 start 秒起（取 length 秒）的平均电平 dB；该段没有声音则为 -inf。"""
+    cmd = ["ffmpeg", "-hide_banner", "-ss", str(start)]
+    if length:
+        cmd += ["-t", str(length)]
+    cmd += ["-i", str(path), "-af", f"bandpass=f={hz}:width_type=h:w=20,volumedetect",
+            "-f", "null", "-"]
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    m = re.search(r"mean_volume: (-?[\d.]+|-inf) dB", proc.stderr or "")
+    return float(m.group(1)) if m else float("-inf")
+
+
 def _done(out: Path, extra: str = "") -> None:
     kb = out.stat().st_size / 1024 if out.is_file() else 0
     print(f"✅ {out} ({kb:.0f} KB){(' ' + extra) if extra else ''}")
+
+
+def duck_filters(src: str, key: str, out: str) -> list[str]:
+    """把 `src` 轨在 `key` 轨（旁白）说话时压低，输出到 `out`。三个参数都是不带方括号的标签名。
+
+    音频混合（本脚本）和视频合成器（auto-short-video 的 assemble.py）共用这一步，压低的力度只此一处。
+    key 先补静音到无限长：sidechaincompress 在较短的输入结束时就结束，不补的话被压低的轨会在旁白结束处被截断。
+    """
+    return [f"[{key}]apad[{key}_pad]",
+            f"[{src}][{key}_pad]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[{out}]"]
 
 
 def cmd_mix(a) -> int:
@@ -120,17 +143,13 @@ def cmd_mix(a) -> int:
         filt.append(f"[{idx}:a]volume={a.bgm_volume},aresample=44100[bgm0]")
         idx += 1
         if voice_label and not a.no_duck:
-            # 复制旁白作 sidechain 控制信号
+            # 复制旁白作 sidechain 控制信号（补静音等细节见 duck_filters）
             filt.append(f"{voice_label}asplit=2[voice_m][voice_sc]")
             voice_label = "[voice_m]"
-            filt.append("[bgm0][voice_sc]sidechaincompress="
-                        "threshold=0.03:ratio=8:attack=20:release=300[bgm]")
+            filt += duck_filters("bgm0", "voice_sc", "bgm")
         else:
             filt.append("[bgm0]anull[bgm]")
         mix_labels.append("[bgm]")
-
-    if voice_label:
-        mix_labels.insert(0, voice_label)
 
     for i, s in enumerate(sfx):
         at = float(sfx_at[i]) if sfx_at else 0.0
@@ -141,22 +160,31 @@ def cmd_mix(a) -> int:
         mix_labels.append(f"[sfx{i}]")
         idx += 1
 
-    if not mix_labels:
+    if not mix_labels and not voice_label:
         _die("没有可混合的音轨。", 2)
-    if len(mix_labels) == 1:
-        filt.append(f"{mix_labels[0]}anull[mixout]")
+    # 末尾淡出，避免 BGM 硬切：只作用在旁白以外的音轨（BGM/音效）上，旁白永不被淡出
+    if mix_labels:
+        if len(mix_labels) == 1:
+            filt.append(f"{mix_labels[0]}anull[bed]")
+        else:
+            filt.append(f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:"
+                        f"duration=longest:normalize=0:dropout_transition=0[bed]")
+        fade = min(1.5, target / 4)
+        filt.append(f"[bed]afade=t=out:st={max(0.0, target - fade):.3f}:d={fade:.3f}[bedout]")
+        if voice_label:
+            filt.append(f"{voice_label}[bedout]amix=inputs=2:"
+                        f"duration=longest:normalize=0:dropout_transition=0[out]")
+        else:
+            filt.append("[bedout]anull[out]")
     else:
-        filt.append(f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:"
-                    f"duration=longest:normalize=0:dropout_transition=0[mixout]")
-    # 末尾淡出，避免 BGM 硬切
-    fade = min(1.5, target / 4)
-    filt.append(f"[mixout]afade=t=out:st={max(0.0, target - fade):.3f}:d={fade:.3f}[out]")
+        filt.append(f"{voice_label}anull[out]")
+    tracks = len(mix_labels) + (1 if voice_label else 0)
 
     out = _prep_out(a.output)
     _run(["ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filt),
           "-map", "[out]", "-t", f"{target:.3f}", str(out)])
     duck = "闪避" if (a.voice and a.bgm and not a.no_duck) else "无闪避"
-    _done(out, f"({len(mix_labels)} 轨 / {target:.1f}s / {duck})")
+    _done(out, f"({tracks} 轨 / {_dur(out):.1f}s / {duck})")  # 报实际写出的文件时长
     return 0
 
 
@@ -198,7 +226,24 @@ def cmd_selftest(_a) -> int:
                                    duration=None, output=str(out3)))
         assert 9.0 < _dur(out3) < 11.0, "仅 BGM 时长应≈10s"
 
-    print("✅ selftest 全部通过（旁白+BGM闪避 / 定时音效 / 仅BGM）")
+        # 旁白一直说到最后：混音末尾 1 秒的旁白电平须与输入一致（旁白不被淡出）
+        voice_in = _band_db(voice, 300, 3.0)
+        voice_out = _band_db(out1, 300, _dur(out1) - 1.0)
+        assert abs(voice_out - voice_in) <= 1.0, \
+            f"旁白末尾 1 秒被改动：输入 {voice_in:.1f} dB，输出 {voice_out:.1f} dB"
+
+        # 闪避 + 要求时长比旁白长 2s：须补满时长，旁白结束后 BGM 继续播
+        out4 = d / "duck_long.wav"
+        cmd_mix(argparse.Namespace(voice=str(voice), voice_volume=1.0, bgm=str(bgm),
+                                   bgm_volume=0.25, bgm_loop_off=False, no_duck=False,
+                                   sfx=None, sfx_at=None, sfx_volume=0.8,
+                                   duration=6.0, output=str(out4)))
+        d4 = _dur(out4)
+        assert 5.9 < d4 < 6.1, f"闪避混音应补满 6s，实得 {d4:.2f}s"
+        after_voice = _band_db(out4, 600, 4.1, 0.3)
+        assert after_voice > -50, f"旁白结束后 BGM 应继续播，实得 {after_voice:.1f} dB"
+
+    print("✅ selftest 全部通过（旁白+BGM闪避 / 定时音效 / 仅BGM / 旁白末尾不淡出 / 闪避补满时长）")
     return 0
 
 

@@ -44,9 +44,27 @@
 {
   "platform": "小红书",
   "post_format": "image | video",
-  "caption": "100-300 字发布文案",
+  "caption": "发布文案，目标 300 字左右，100-1000 字均可（800 字以上校验会警告）",
   "hashtags": ["#话题1", "#话题2"],
   "poster_style": "card-design 风格名（如 瑞士极简 / 杂志编辑 / 手账贴纸 / 奶油温柔 …见 card-design/references/styles.md）",
+
+  "creation_guide": {
+    "path": "profiles/<账号>/creation-guide.md",
+    "date": "写帖子前读的那份创作指南的最后修改日期，YYYY-MM-DD"
+  },
+
+  "claims": [
+    {
+      "text": "帖子里写的那句事实声明，原话",
+      "evidence_type": "brand_document | fetched_reference | team_statement | user_material",
+      "source": "证据位置：文件路径 / 网址 / 引用的原话"
+    },
+    {
+      "text": "没有证据的那句声明，原话",
+      "fallback": "removed | reworded",
+      "now": "reworded 时必填：改写后的新说法（必须出现在帖子里）"
+    }
+  ],
 
   "card_count": 7,
   "cards": [
@@ -55,7 +73,7 @@
       "type": "cover | content | ending",
       "title": "卡片小标题（cover/content）",
       "content": "卡片正文（≤80 字中文）",
-      "synthesis_strategy": "html_card | text_on_photo | collage",
+      "synthesis_strategy": "html_card | text_on_photo | collage | photo_scene",
       "material_refs": ["m001", "m002"],
       "image_prompt": "图片生成 prompt（可选）",
       "image_url": "卡片图片 URL（可选）"
@@ -80,7 +98,7 @@
       "kind": "text | image | video | audio",
       "caption": "画面描述",
       "usage": "cover | content-N | ending | reference-only | discard",
-      "strategy": "html_card | text_on_photo | collage | use_original"
+      "strategy": "html_card | text_on_photo | collage | photo_scene | use_original"
     }
   ]
 }
@@ -92,6 +110,26 @@
 - `post_format` = `video` 时，`shots[]` 必填；`cards[]` 只需一张 `cover` 作为封面
 - `materials[]` 仅在用户提供了素材时出现；详细工作流见 `material-intake.md`
 - `synthesis_strategy` 为每张卡选择合成路径；`material_refs` 指向 `materials[].id`
+- `photo_scene`：用户在开场提问里选了照片场景帖时才用，该卡的图由 xhs-reference-visual 出
+
+## 创作指南记录 `creation_guide`（小红书，必填，issue 125）
+
+写帖子之前先读这个账号的创作指南（`python3 skills/shared/scripts/creation_guide.py check --brand <账号>`），`creation_guide` 记下读的是哪一份：`path` 是命令打印的路径，`date` 是它打印的最后修改日期。`validate_meta.py` 拒绝缺了它、路径为空或日期格式不对的新帖子。
+
+## 声明记录 `claims`（小红书，必填，issue 102）
+
+记录帖子**自己写的**每一句事实声明：功能、功效、参数、规格、含量、成分、工艺名、认证、专业术语。范围是长文原稿、caption、每张卡的标题和正文（所有出图路径，含 `photo_scene`）、视频每个分镜的口播和屏幕字。帖子没有任何事实声明时写 `"claims": []`，"没有"也是一个明确的结果。
+
+- 每条要么有证据（`evidence_type` + `source`），要么有兜底（`fallback`），二选一：
+  - `brand_document`：客户知识库里的品牌文件（档案、详情页、证书等），`source` 写文件位置
+  - `fetched_reference`：存在本篇 `reference/` 里的抓取原文，`source` 写相对路径（如 `reference/ref_001.md`），文件必须存在
+  - `team_statement`：负责人或团队说过的话，`source` 写引用的原话
+  - `user_material`：用户自己的照片或视频（按画面内容判断），`source` 写位置；相对路径必须存在于本篇目录
+  - `removed`：证据找不到，把这句从帖子里删掉（`text` 不能再出现在帖子里）
+  - `reworded`：证据找不到，改写成不构成事实声明的说法（比如读者看到什么、做什么），`now` 写新说法，且必须出现在帖子里
+- 兜底**不得**把声明改成编造的亲身体验或用户反馈（"自用、回购、亲测"需要真实素材；见 `skill-quality-gate/references/general-rules.md` 禁止伪造用户反馈或案例）
+- 商品包装上印的文字不算声明，也不算证据：不写进 `claims`，也不能拿来当 `source`
+- `validate_meta.py` 会拒绝：缺少 `claims`；条目既无证据也无兜底、或证据类型/兜底不在上表；有证据的 `text` 或 `reworded` 的 `now` 没有一字不差出现在帖子里（这样没写进帖子的包装文字进不来）；`removed` 的 `text` 仍在帖子里；本篇目录内的证据文件不存在。知识库路径、网址、引用原话只要求非空。
 
 ## 字段规则
 
@@ -137,6 +175,14 @@
   "caption": "媒体说危机，数据说增长。Anthropic 调研 5000 人，83% 说 AI 提高效率而非取代……",
   "hashtags": ["#AI对工作的影响", "#失业危机是假的"],
   "poster_style": "杂志编辑",
+  "creation_guide": {"path": "profiles/example/creation-guide.md", "date": "2026-10-29"},
+  "claims": [
+    {
+      "text": "Anthropic 调研 5000 人",
+      "evidence_type": "fetched_reference",
+      "source": "reference/ref_001.md"
+    }
+  ],
   "card_count": 7,
   "cards": [
     {

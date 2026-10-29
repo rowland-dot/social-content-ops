@@ -4,7 +4,7 @@ import QuestionCards from './QuestionCards';
 import BrushEntry from './BrushEntry';
 import type { ChatSession, ChatMessage, StreamState } from '../lib/store';
 import { uploadFiles, adoptOversize } from '../lib/api';
-import type { UploadedFile } from '../lib/api';
+import type { UploadedFile, ChatQuestion } from '../lib/api';
 import { IconArrowUp, IconStop, IconPlus, IconFile } from './icons';
 
 interface ChatPageProps {
@@ -20,6 +20,8 @@ interface ChatPageProps {
     legacyAgentText?: string,
   ) => void; // 重试：仅对最后一轮
   onQuestionAnswered?: (questionId: string) => void;   // 某道问答题提交成功（App 记录答过，重放不再出现）
+  lateQuestions?: ChatQuestion[];   // 上一轮结束后仍未回答的过期题（留在对话里，选项仍可点）
+  onLateAnswer?: (q: ChatQuestion, answers: Record<string, string[]>) => void;   // 过期题的补答：作为聊天消息发出
 }
 
 // 空态推荐（贴合 Easel 社媒创作场景）
@@ -36,7 +38,7 @@ function greeting(): string {
   return `${g}，想创作点什么？`;
 }
 
-export default function ChatPage({ apiDirect, session, stream, onSend, onStop, onResend, onQuestionAnswered }: ChatPageProps) {
+export default function ChatPage({ apiDirect, session, stream, onSend, onStop, onResend, onQuestionAnswered, lateQuestions, onLateAnswer }: ChatPageProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -206,6 +208,7 @@ export default function ChatPage({ apiDirect, session, stream, onSend, onStop, o
   }
 
   // ---- 对话态 ----
+  const boxes = [...(lateQuestions || []), ...(isStreaming ? stream!.questions || [] : [])];
   const displayMessages: ChatMessage[] = [...session.messages];
   if (isStreaming) displayMessages.push({ role: 'assistant', content: stream!.content || '' });
 
@@ -254,8 +257,8 @@ export default function ChatPage({ apiDirect, session, stream, onSend, onStop, o
               />
             );
           })}
-          {isStreaming && (stream!.questions?.length ?? 0) > 0 && (
-            <QuestionCards questions={stream!.questions || []} onDone={(qid) => onQuestionAnswered?.(qid)} />
+          {boxes.length > 0 && (
+            <QuestionCards questions={boxes} onDone={(qid) => onQuestionAnswered?.(qid)} onLateAnswer={onLateAnswer} />
           )}
           <div ref={messagesEndRef} />
         </div>

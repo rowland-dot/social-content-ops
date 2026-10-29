@@ -53,6 +53,7 @@ DEFAULT_NARRATOR_VOICE = "zh-CN-YunyangNeural"  # 旁白 edge 兜底音色（仅
 PRESET_NARRATOR_VOICE = {
     "openai-compatible": "FunAudioLLM/CosyVoice2-0.5B:alex",  # SiliconFlow CosyVoice2 沉稳男声
     "gemini": "Charon",                                       # gemini 男声
+    "chatgpt": "cove",                                        # ChatGPT 订阅「朗读」，无 key；可选九个声线，名字见 chatgpt_voice.VOICES
 }
 
 # 情绪 → 韵律增量（rate% / pitchHz / volume%），叠加在角色基础音色之上（子串匹配）。
@@ -153,6 +154,16 @@ def combine_prosody(base_rate: str | None, base_pitch: str | None,
 
 
 # ── cast（显式文件路径）────────────────────────────────────────────────
+def _load_dotenv() -> None:
+    """命令行入口加载 .env（VOICE_PROVIDER 常只写在 .env）——与 tts.py / dubbing.py 同一个加载器；
+    已导出的环境变量优先，不覆盖。selftest 不加载（自检不依赖开发者自己的 .env）。"""
+    try:
+        import ai_video
+        ai_video.load_env_file(ai_video.find_default_env_file())
+    except Exception:  # noqa: BLE001 — 加载失败不致命，仍可用已导出的环境变量
+        pass
+
+
 def _closed_source_configured() -> bool:
     """是否已配闭源云 provider（环境变量 VOICE_PROVIDER 非空）——据此强制不许再用 edge(AI 音色)。"""
     return bool((os.environ.get("VOICE_PROVIDER") or "").strip())
@@ -243,6 +254,12 @@ def cast_check(cast: dict, closed_source_configured: bool = False) -> list[str]:
         elif eng == "clone":
             if not c.get("voice_id"):
                 problems.append(f"{nm} engine=clone 但缺 voice_id")
+            elif c.get("provider") == "chatgpt":  # ChatGPT 朗读：声线名在这里就查，别等配到那一句才发现
+                from chatgpt_voice import ChatGPTVoiceError, resolve_voice
+                try:
+                    resolve_voice(c["voice_id"])
+                except ChatGPTVoiceError as exc:
+                    problems.append(f"{nm} 的 voice_id 不对：{exc}")
         if c.get("role") == "narrator":
             narrator_voice = vc
         if vc:
@@ -1018,6 +1035,7 @@ def main() -> int:
     a = ap.parse_args()
     if a.cmd == "selftest":
         return _selftest()
+    _load_dotenv()
     if a.cmd == "cast":
         cf = Path(a.cast).expanduser()
         if a.castcmd == "init":

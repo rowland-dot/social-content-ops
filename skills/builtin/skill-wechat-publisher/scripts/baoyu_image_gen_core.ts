@@ -3,7 +3,9 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-export type Provider = "openai" | "gemini-proxy";
+import { execFileSync } from "node:child_process";
+
+export type Provider = "openai" | "gemini-proxy" | "codex";
 export type Quality = "normal" | "2k";
 
 export type CliArgs = {
@@ -153,16 +155,26 @@ print(json.dumps({key: os.environ.get(key) for key in keys}))
   }
 }
 
-export function detectProvider(args: CliArgs): Provider {
-  if (args.provider) return args.provider;
-  if (process.env.GEMINI_PROXY_API_KEY) return "gemini-proxy";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  throw new Error(
-    "No image provider configured. Set GEMINI_PROXY_API_KEY or OPENAI_API_KEY."
-  );
+// IMG_PROVIDER=codex (or --provider codex) routes image generation through the Codex / ChatGPT
+// subscription: no API key, nothing billed per call.
+export function wantsCodex(args: Pick<CliArgs, "provider">): boolean {
+  return args.provider === "codex" || (!args.provider && process.env.IMG_PROVIDER === "codex");
+}
+
+// Issue 95: images run only on the Codex subscription. Anything else (no setting, or an explicit
+// --provider openai|gemini-proxy) stops here, before any request, with a message that names no key.
+export const CODEX_ONLY_MESSAGE =
+  "Image generation here runs only through the Codex subscription. " +
+  "The project settings need IMG_PROVIDER=codex. " +
+  "本项目的图片只通过 Codex（ChatGPT 订阅）生成，请在项目设置里加上 IMG_PROVIDER=codex。";
+
+export function detectProvider(args: Pick<CliArgs, "provider">): Provider {
+  if (wantsCodex(args)) return "codex";
+  throw new Error(CODEX_ONLY_MESSAGE);
 }
 
 export function getDefaultModel(provider: Provider): string {
+  if (provider === "codex") return "codex-subscription";
   if (provider === "gemini-proxy") {
     return process.env.GEMINI_PROXY_IMAGE_MODEL || "gemini-2.5-flash";
   }
@@ -200,10 +212,28 @@ export async function generateImage(
   prompt: string,
   args: CliArgs
 ): Promise<Uint8Array> {
-  if (provider === "gemini-proxy") {
-    return generateWithGeminiProxy(prompt, model, args);
+  // The paid providers below are kept only for upstream syncs; nothing reaches them (issue 95).
+  if (provider !== "codex") throw new Error(CODEX_ONLY_MESSAGE);
+  return generateWithCodex(prompt, args);
+}
+
+// The Codex logic (finding the image, never falling back to a paid API) lives in one place,
+// skills/shared/scripts/codex_image.py; this only calls it.
+async function generateWithCodex(prompt: string, args: CliArgs): Promise<Uint8Array> {
+  const helper = path.resolve(SKILL_ROOT, "..", "..", "shared", "scripts", "codex_image.py");
+  const cmd = ["--ratio", args.aspectRatio || args.size || "auto"];
+  for (const ref of args.referenceImages) cmd.push("--image", ref);
+  try {
+    const out = execFileSync("python3", [helper, ...cmd], {
+      input: prompt,
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return new Uint8Array(out);
+  } catch (error) {
+    const stderr = (error as { stderr?: Buffer }).stderr?.toString("utf8").trim();
+    throw new Error(`Codex image route failed: ${stderr || String(error)}`);
   }
-  return generateWithOpenAI(prompt, model, args);
 }
 
 async function generateWithOpenAI(

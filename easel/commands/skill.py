@@ -20,13 +20,12 @@ import time
 from pathlib import Path
 
 from easel.openclaw_cmd import openclaw_base_cmd
-from easel.persona import persona_prefix, profile_exists
+from easel.persona import list_personas, persona_prefix, profile_exists, profile_problem
 from easel.timeouts import TIMEOUT_PRODUCE
 from easel.direct_api import read_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_DIR = PROJECT_ROOT / "skills" / "builtin"
-PROFILES_DIR = PROJECT_ROOT / "profiles"
 OPENCLAW_PROFILE = "easel"
 
 
@@ -78,9 +77,10 @@ def _check_profile_exists(name: str) -> bool:
     """检查画像是否存在，不存在时打印错误与可用画像。"""
     if profile_exists(name):
         return True
-    available = [d.name for d in PROFILES_DIR.iterdir()
-                 if d.is_dir() and not d.name.startswith("_")]
+    available = list_personas()
     print(f"[easel] ERROR: 画像 '{name}' 不存在", file=sys.stderr)
+    if problem := profile_problem(name):
+        print(f"  {problem}", file=sys.stderr)
     if available:
         print(f"  可用画像: {', '.join(available)}", file=sys.stderr)
     return False

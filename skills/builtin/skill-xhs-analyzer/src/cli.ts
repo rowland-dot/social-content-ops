@@ -49,6 +49,7 @@ import { resolvePlatform, type PlatformId } from "./lib/platform.js";
 import { detectPlatform, detectPlatformForCookies } from "./lib/detect.js";
 import { XhsClient, XhsApiError } from "./lib/client.js";
 import { analyzeViral, formatViralAnalysis } from "./lib/analyze.js";
+import { likesPlusFavourites, topReportNote } from "./lib/top-notes.js";
 import {
   selectCandidates,
   executeReplies,
@@ -1868,7 +1869,7 @@ interface AccountReport {
     shares: number;
     totalEngagement: number;
   };
-  topByLikes: AccountReportNote | null;
+  topByLikesPlusFavourites: AccountReportNote | null;
   topByEngagement: AccountReportNote | null;
   notes: AccountReportNote[];
 }
@@ -2029,7 +2030,7 @@ async function buildAccountReport(
     totals,
     monthTotals,
     averages: averageReportNotes(totals, notes.length),
-    topByLikes: topReportNote(notes, "likes"),
+    topByLikesPlusFavourites: topReportNote(notes),
     topByEngagement: topReportNote(notes, "totalEngagement"),
     notes,
   };
@@ -2156,14 +2157,6 @@ function averageReportNotes(
   };
 }
 
-function topReportNote(
-  notes: AccountReportNote[],
-  field: "likes" | "totalEngagement"
-): AccountReportNote | null {
-  if (notes.length === 0) return null;
-  return notes.reduce((best, note) => note[field] > best[field] ? note : best, notes[0]);
-}
-
 function printAccountReport(result: {
   month: string;
   accounts: AccountReport[];
@@ -2172,8 +2165,8 @@ function printAccountReport(result: {
   console.log(kleur.bold(`Account report (${result.month})`));
   for (const account of result.accounts) {
     const partial = account.complete ? "" : kleur.yellow(" partial");
-    const top = account.topByLikes
-      ? `${formatNumber(account.topByLikes.likes)} likes - ${account.topByLikes.title}`
+    const top = account.topByLikesPlusFavourites
+      ? `${formatNumber(likesPlusFavourites(account.topByLikesPlusFavourites))} likes+favourites - ${account.topByLikesPlusFavourites.title}`
       : "n/a";
     console.log(
       `${kleur.bold(account.userId)}${partial}  ` +

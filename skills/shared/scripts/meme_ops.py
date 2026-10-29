@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,14 @@ _FONT_CANDIDATES = [
     "/System/Library/Fonts/PingFang.ttc",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
+
+# Windows: the system fonts folder and the per-user one (fonts installed for one user only). Chinese-capable
+# fonts first, Arial (Latin only) last, the same order as the Linux list above.
+_WIN_FONT_DIRS = [
+    Path(os.environ.get("SystemRoot", "C:/Windows")) / "Fonts",
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "Fonts",
+]
+_WIN_FONT_FILES = ["msyhbd.ttc", "msyh.ttc", "simhei.ttf", "simsun.ttc", "arialbd.ttf", "arial.ttf"]
 
 
 def _die(msg: str, code: int = 1) -> None:
@@ -57,6 +66,10 @@ def _find_font(explicit=None) -> str:
     for f in _FONT_CANDIDATES:
         if Path(f).is_file():
             return f
+    for d in _WIN_FONT_DIRS:
+        for name in _WIN_FONT_FILES:
+            if (d / name).is_file():
+                return str(d / name)
     _die("未找到字体，请用 --font 指定 .ttf/.ttc。", 2)
     return ""
 

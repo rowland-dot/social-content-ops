@@ -1,0 +1,20 @@
+{
+  "gates": [
+    {"id": "dup", "title": "查重（形式×变体唯一、相邻转场不重复）", "phase": "verify",
+     "cmd": "\"{python}\" gates/check_dup.py --scenes \"{run_dir}/artifacts/scenes.json\""},
+    {"id": "timeline", "title": "分场时间轴（重叠 / 长间隙 / 过短场）", "phase": "verify",
+     "cmd": "\"{python}\" gates/check_timeline.py --scenes \"{run_dir}/artifacts/scenes.json\""},
+    {"id": "layout", "title": "排版网格（边距 / 重叠 / 焦点）", "phase": "verify",
+     "cmd": "\"{python}\" gates/check_layout.py --elements \"{run_dir}/artifacts/gate-inputs/layout.json\""},
+    {"id": "frames", "title": "帧检（渲代表帧 + 区域断言）", "phase": "verify", "timeout": 1800,
+     "cmd": "\"{python}\" \"{skill_dir}/scripts/gate_composition.py\" frames --run-dir \"{run_dir}\""},
+    {"id": "transitions", "title": "转场可感知", "phase": "verify", "timeout": 1800,
+     "cmd": "\"{python}\" \"{skill_dir}/scripts/gate_composition.py\" transitions --run-dir \"{run_dir}\""},
+    {"id": "meta", "title": "五件套自检（素材 / 动画 / 转场 / 音效 / 原画面）", "phase": "render",
+     "cmd": "\"{python}\" gates/check_meta.py --project \"{run_dir}/artifacts/gate-inputs/meta.json\" --root \"{run_dir}/workdir\""},
+    {"id": "match", "title": "素材↔台词对位", "phase": "render",
+     "cmd": "\"{python}\" gates/check_match.py --scenes \"{run_dir}/artifacts/gate-inputs/match.json\" --clipsdir \"{run_dir}/workdir/public/stock\" --out \"{run_dir}/artifacts/asset-match.md\""},
+    {"id": "audio", "title": "响度门（成片）", "phase": "render",
+     "cmd": "\"{python}\" gates/check_audio.py \"{run_dir}/workdir/out/final.mp4\""}
+  ]
+}

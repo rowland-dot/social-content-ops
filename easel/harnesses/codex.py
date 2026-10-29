@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 
 from easel import __version__
+from easel.persona import external_profile_dirs
 
 from .base import Descriptor, HarnessError, RunRequest
 from .commands import base_command
@@ -119,7 +120,9 @@ class CodexAdapter:
             bind(thread_id)
             rpc.native_id = thread_id
             policy = {"type": "readOnly"} if request.sandbox == "read-only" else {
-                "type": "workspaceWrite", "writableRoots": [str(request.cwd)],
+                "type": "workspaceWrite", "writableRoots": [str(request.cwd), *(
+                    str(folder) for folder in external_profile_dirs(request.env).values()
+                    if folder.is_dir())],
                 "networkAccess": False}
             params = {"threadId": thread_id, "input": [{"type": "text", "text": request.prompt}],
                       "approvalPolicy": "on-request", "sandboxPolicy": policy}

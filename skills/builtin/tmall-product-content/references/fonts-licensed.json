@@ -1,0 +1,4 @@
+[
+ {"family": "Noto Sans CJK SC", "file": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "also": ["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"], "licence": "SIL Open Font License", "checked_on": "2026-10-28", "how": "name table, licence description"},
+ {"family": "Noto Serif CJK SC", "file": "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", "also": ["/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"], "licence": "SIL Open Font License", "checked_on": "2026-10-28", "how": "name table, licence description"}
+]

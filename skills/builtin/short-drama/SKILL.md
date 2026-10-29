@@ -122,22 +122,22 @@ progress.json           逐集/逐镜生成进度（控费、断点续跑）
    python skills/builtin/short-drama/scripts/dubbing.py plan --series "<剧名>" --episode N
    ```
    ⚠️ **现实约束：AI 视频只能生成固定档位（多为 5s，部分 5/10s），不能按任意秒数出片。** 所以 `plan` 的作用是：① 估出每镜台词时长（= 最终画面应停留的时间，写回 `target_duration`）② **检查每镜台词能否塞进一个片段档**——**塞不下（台词 > ~5s）就拆成多镜或精简台词**（`plan` 会 ⚠️ 标出来），别硬生成再靠后期拉伸 ③ 给出每镜建议生成的片段档位 `gen_duration`（5 或 10）。**把每镜台词控制在一个片段档内，是画面自然的关键。**
-14. **校验分镜**：`drama_ops.py shots validate --series "<剧名>" --episode N`（风格前缀/引用参考图/编号已登记/idx 连续）。
+14. **校验分镜**：`drama_ops.py shots validate --series "<剧名>" --episode N`（风格前缀/引用参考图/编号已登记/idx 连续）。 **做首帧图之前，剧本和分镜时间轴交负责人审批**：不要在对话里贴表格，不要手写网页，用 `python skills/shared/scripts/storyboard_page.py build --drama-episode episodes/epNN --script-only` 从本集自己的分镜表出一页并在浏览器里打开（每镜一行：口播、画面、时间、来源、备注，照抄 `shots.json` / `lines.json`，一字不改；分镜图一栏写「分镜图还没出」）。每集一页；`series-bible.md` 和 `script.md` 不上页。负责人改了哪一镜，就改 `shots.json` / `lines.json` 再重出。
 
 ### 4. 关键帧生成（只是 I2V 的首帧，不是成片）
 
-15. 用 **ai-image-gen** 按每镜 prompt 生成首帧图（**图生图并引用该镜 refs 的参考图**，保角色一致），落 `episodes/epNN/shots/`，路径写回 shots.json 的 `frame`。⚠️ 到此还只是**静态图**，下一步必须驱动成视频。
+15. 用 **ai-image-gen** 按每镜 prompt 生成首帧图（**图生图并引用该镜 refs 的参考图**，保角色一致），落 `episodes/epNN/shots/`，路径写回 shots.json 的 `frame`。⚠️ 到此还只是**静态图**，下一步必须驱动成视频。 **首帧图出齐后再交负责人审批一次**（首帧图免费，走 Codex）：同一页，每镜换成它的首帧图，命令是 `python skills/shared/scripts/storyboard_page.py build --drama-episode episodes/epNN`（去掉 script-only 开关）；页面从 `episodes/epNN/shots/` 读 `frame` 里的文件名，缺首帧图或找不到文件时脚本会停下并点出第几镜。
 
 ### 5. 逐镜生视频（I2V，**铁律①：每镜必做，绝不跳过**）
 
-16. **生成音频契约和 prompt（把台词喂给模型）**：先跑 `model_registry.py configured --group video --env-file .env`；多个可用且用户没点名时先询问，本集选定后全链路锁定。
+16. **生成音频契约和 prompt（把台词喂给模型）**：先跑 `model_registry.py configured --group video --env-file .env`；多个可用且用户没点名时先询问，本集选定后全链路锁定。`--provider` 填选定的那个（只有一个可用就是它），**不要写 `"$VIDEO_PROVIDER"`**：那个 shell 变量可能是网关启动时抄下来的旧值。
     ```bash
-    python skills/builtin/short-drama/scripts/dubbing.py prepare --series "<剧名>" --episode N --language zh-CN --provider "$VIDEO_PROVIDER"
+    python skills/builtin/short-drama/scripts/dubbing.py prepare --series "<剧名>" --episode N --language zh-CN --provider "<选定的 provider>"
     ```
     `prepare` 读 `lines.json` 把台词契约写进每镜 `generation_prompt`：默认 **native-first**（要求模型**逐字说台词**、成片用原生对白）；旁白/纯动作镜不给台词。
     - **一镜可有多句画内对白**：视频模型能连着说，`prepare` 会把该镜多句按时间顺序全写进 `generation_prompt`（各句按 `at` 定位、缺则顺排，累计须塞进片段档）。**不必为「多句」硬拆成一句一镜**——只有旁白与画内对白仍不同镜（避免原生人声与旁白重叠）。
     - **别用 dub 躲避 native-first**：`prepare --dialogue-mode dub`（全剧不给台词、后期全 TTS）**已加硬门**——没有 `ai_video.py probe-dialogue` 实测模型不忠实、也没显式 `--force-dub` 时会被拒绝。撞到多句/一句约束**不是**改 dub 的理由（多句直接一起塞进 prompt）。默认让模型试原生、`audit` 只对真说错的镜逐镜换 TTS。
-17. **逐镜生视频（脚本驱动，强制把台词喂给模型）**：
+17. **逐镜生视频（脚本驱动，强制把台词喂给模型）**：**付费**（BytePlus Seedance，按片段计费）。上面两页都过了也不等于同意：每次跑之前，用提问工具问负责人同意，写明服务名 BytePlus Seedance、每次的费用和跑几次，得到明确的是才能执行。
     ```bash
     python skills/builtin/short-drama/scripts/drama_ops.py generate --series "<剧名>" --episode N --ratio "<9:16或16:9>"
     ```

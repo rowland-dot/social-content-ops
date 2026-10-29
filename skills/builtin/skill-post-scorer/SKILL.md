@@ -72,17 +72,17 @@ Execute /skill-post-scorer
 
 > **互动分与 Top 10% 筛选交给脚本，LLM 只做特征提炼。** 由
 > [`scripts/score.py`](scripts/score.py) 完成（复用
-> `../../shared/scripts/social_stats.py` 的 `engagement_score`）。
+> `../../shared/scripts/social_stats.py` 的均值/中位数/样本量警告）。
 
-有历史/用户数据时，把帖子整理成 JSON 数组（每条含点赞与评论字段），调用：
+有历史/用户数据时，把帖子整理成 JSON 数组（每条含点赞与收藏字段），调用：
 
 ```bash
 python3 skills/builtin/skill-post-scorer/scripts/score.py top --input history.json
 python3 skills/builtin/skill-post-scorer/scripts/score.py top --input history.json --top-pct 5
 ```
 
-脚本自动：按 `互动分 = 点赞 + 评论×3` 逐条计算（字段兼容 likes/reactions/点赞、
-comments/评论）、按互动分降序、算出 Top N% 门槛与分布（均值/中位数/最高/最低）、
+脚本自动：按 `互动分 = 点赞 + 收藏`（likes + favourites）逐条计算（字段兼容
+likes/reactions/点赞、favourites/favorites/collects/collected_count/收藏；缺收藏字段按 0 计）、按互动分降序、算出 Top N% 门槛与分布（均值/中位数/最高/最低）、
 样本量不足警告。**LLM 拿到脚本输出的 Top 帖子后**，提取其共性特征：
 
 - 开头钩子类型（提问、数据、故事、反常识）

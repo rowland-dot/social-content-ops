@@ -13,27 +13,25 @@ metadata:
     requires:
       bins:
         - redbook
-    install:
-      - kind: node
-        package: "@lucasygu/redbook"
-        bins: [redbook]
     homepage: https://github.com/lucasygu/redbook
 ---
 
 # Redbook — 小红书内容分析 CLI
 
-用 `redbook` CLI 搜索笔记、读内容、分析创作者、提取爆款规律、研究选题。**OpenClaw 用户：** `clawhub install redbook` 或 `npm install -g @lucasygu/redbook --ignore-scripts`。Easel 环境里推荐 `--ignore-scripts`，避免上游 postinstall 额外写入带发布/评论能力的技能。
+用 `redbook` CLI 搜索笔记、读内容、分析创作者、提取爆款规律、研究选题。本环境（WSL/Linux）的 `redbook` 已装好，**不要自行安装或升级**（官方安装脚本会往 Claude Code 技能目录写入带发布/评论命令说明的副本）。
 
-## ⚠️ 环境依赖
+## 运行环境（WSL / Linux，只读通道）
 
-本 SKILL 不是 macOS 专属。Linux/WSL 可用 `REDBOOK_COOKIE_STRING` 或 `REDBOOK_COOKIE_FILE`（默认 `~/.redbook/cookies.json`）提供登录态；macOS keychain / 浏览器抽取只是 cookie 来源之一。
+本机的 `redbook` 是一道守卫脚本（`scripts/redbook-guard.sh`），真程序只能经它调用。这些约束由守卫执行，不靠自觉：
 
-| 依赖 | 说明 |
+| 项 | 说明 |
 |------|------|
-| Node.js ≥ 22 | 运行 `@lucasygu/redbook` CLI |
-| `redbook` binary | 经 `clawhub install redbook` / `npm install -g @lucasygu/redbook --ignore-scripts` 安装 |
-| 登录 cookie | 优先 `REDBOOK_COOKIE_STRING`；其次 `REDBOOK_COOKIE_FILE` / `~/.redbook/cookies.json`；也可用已登录浏览器（桌面环境） |
-| puppeteer-core + marked | 仅 `render` 卡片渲染需要（可选） |
+| 登录态 | 每次调用现取：守卫通过 `scripts/xhs-cdp-cookies.mjs` 从 SOP 项目的小红书扫描浏览器读 cookie（该浏览器须已启动并登录），cookie 只存在于这一次调用的内存里，**不写盘**。不要用 `--cookie-string`、`--cookie-source`、`auth`，守卫会拒绝 |
+| 只读 | 只放行 `search` `read` `comments` `user` `user-posts` `account-report` `topics` `feed` `health` `whoami`（另有离线的 `render`）。其余一律拒绝，包括 `favorites` `boards` `board`。一次调用里连取多页的形式也拒绝：`analyze-viral`、`viral-template`、任何 `--all`、`account-report` 的 `--file` / `--max-pages` 大于 1 / 多个账号（守卫只能给整次调用计一次数、隔一次间隔，管不到程序内部的连发）。同样的分析改成分开的 `read` `comments` `user` `user-posts` 调用，一次一篇、一页。守卫自己多了两个步骤 `fetch-file`（下载平台文件服务器上的一个文件）和 `diandian`（点点总结，算一次读），只供 `skill-xhs-note-reader` 使用，同样受锁、熔断管 |
+| 额度与节奏 | 每天最多 100 次读（所有需要登录的调用都计数）；一次只跑一个；两次读之间守卫至少隔 15 秒（研究循环默认 ~20 s ± jitter 仍然适用） |
+| 熔断 | 一旦出现验证码 / 访问频繁 / 300012 / 300031，守卫写入熔断标记并拒绝后续所有读取。立刻向负责人汇报，不得重试、不得自己清除标记 |
+| 账号共用 | 同一个账号 favsense（收藏整理）也在用。favsense 正在运行、或 SOP 扫描占着浏览器时，守卫会报  并退出：如实告诉负责人当前不可用，**不要循环重试** |
+| 依赖 | Node.js ≥ 22 · 扫描浏览器在运行且已登录 · `render` 卡片另需 puppeteer-core + marked（可选） |
 
 ## 与 skill-xhs-publisher 的分工边界
 
@@ -43,7 +41,7 @@ metadata:
 
 ## Research discipline（先读这条）
 
-XHS 风控节流的是**读取**，不只是写入。任何读超过几篇笔记的研究，都**必须**走 **[references/research-loop.md](references/research-loop.md)** 的研究循环 —— 默认 human-paced（~20 s/篇，一次一篇）。在紧循环里猛敲 `read`/`comments`/`analyze-viral` 会在几十次内触发验证码/IP 封（300012），账号降级数小时。⚡ Fast 模式仅应急，需打印警告 + 用户明确 opt-in。绝不并行或零延迟发读。
+XHS 风控节流的是**读取**，不只是写入。任何读超过几篇笔记的研究，都**必须**走 **[references/research-loop.md](references/research-loop.md)** 的研究循环 —— 默认 human-paced（~20 s/篇，一次一篇）。在紧循环里猛敲 `read`/`comments` 会在几十次内触发验证码/IP 封（300012），账号降级数小时。⚡ Fast 模式仅应急，需打印警告 + 用户明确 opt-in。绝不并行或零延迟发读。
 
 ## Usage
 
@@ -51,9 +49,9 @@ XHS 风控节流的是**读取**，不只是写入。任何读超过几篇笔记
 redbook search "AI编程" --json       # 搜索笔记
 redbook read <webUrl> --json         # 读笔记（用 search 返回的 webUrl，含 xsec_token）
 redbook user <profileUrl> --json     # 创作者档案
-redbook analyze-viral <webUrl> --json # 单篇爆款分析（0-100 分）
-redbook account-report --file ids.txt --json  # 批量账号指标
-redbook health --all --json          # 笔记限流检测
+redbook comments <webUrl> --json     # 评论（一页；--all 被守卫拒绝）
+redbook account-report <profileUrl> --json  # 一个账号的指标（一次一个账号）
+redbook health --json              # 笔记限流检测（--all 被守卫拒绝）
 ```
 
 **始终加 `--json`** 供程序解析。全部命令、选项、JSON 结构见 **[references/commands.md](references/commands.md)**。
@@ -70,7 +68,7 @@ redbook health --all --json          # 笔记限流检测
 | I 评论洞察 · J 爆款结构拆解 · K 互动机会识别 | 只读分析 |
 | L 卡片渲染（离线） · M 笔记限流检测 | 产出/健康 |
 
-组合示例：快速主题扫描 `A→C→F`；完整细分分析 `A→B→C→D→E→F→G→H`；单篇深挖 `analyze-viral`。
+组合示例：快速主题扫描 `A→C→F`；完整细分分析 `A→B→C→D→E→F→G→H`；单篇深挖 `read` + `comments` + `user-posts`（分开调用）。
 
 ## 关键领域知识（references/）
 
@@ -84,5 +82,5 @@ redbook health --all --json          # 笔记限流检测
 
 ## Requirements
 
-- Node.js ≥ 22 · 已安装 `redbook` · 提供 `REDBOOK_COOKIE_STRING` / cookie 文件，或在支持的桌面浏览器中已登录 xiaohongshu.com
+- WSL / Linux · Node.js ≥ 22 · SOP 小红书扫描浏览器已启动并登录 xiaohongshu.com（见上文「运行环境」）
 - 仅卡片渲染额外需 `puppeteer-core` + `marked`（用本机 Chrome，无需额外下载浏览器）

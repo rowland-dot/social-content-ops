@@ -28,7 +28,8 @@ except Exception:  # noqa: BLE001
     pass
 
 STATE = {0: "done", 2: "gate-failed", 3: "awaiting-answer", 1: "error"}
-DEFAULT_GATES = Path(__file__).resolve().parent.parent / "vendor" / "video-pipeline-sdk" / "gates" / "default-gates.json"
+SKILL_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_GATES = SKILL_DIR / "default-gates.json"
 
 
 def now_iso():
@@ -111,7 +112,10 @@ def resolve_run(args, base: Path) -> Path:
 
 
 def cexec(cmd):
-    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # the SDK prints Chinese progress lines; under a Western code page (e.g. a GitHub Windows runner) that crashes it,
+    # so the child is told to write UTF-8, the same encoding this side reads it with
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return r.returncode, ((r.stdout or "") + (r.stderr or "")).rstrip()
 
 
@@ -223,9 +227,20 @@ def cmd_start(args) -> int:
     stamp = time.strftime("%Y%m%d-%H%M%S")
     root = base / stamp
     rd, outd = root / "run", root / "out"
-    init_args = ["init", "--source", str(src), "--out", str(outd), "--run-dir", str(rd)]
+    # 每次运行都把渲染引擎装进自己的 workdir（scaffold_install）；调用方的 --config 同名项优先。
+    cfg = {"scaffold_install": True}
+    if args.config:
+        cp = Path(args.config)
+        if not cp.is_file():
+            print(f"config 不存在：{cp}", file=sys.stderr)
+            return finish(1)
+        cfg.update(json.loads(cp.read_text(encoding="utf-8")))
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "start-config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    init_args = ["init", "--source", str(src), "--out", str(outd), "--run-dir", str(rd),
+                 "--config", str(root / "start-config.json")]
     for flag, val in (("--brief", args.brief), ("--transcript", args.transcript),
-                      ("--scenes", args.scenes), ("--config", args.config)):
+                      ("--scenes", args.scenes)):
         if val:
             init_args += [flag, str(val)]
     code, out = cexec(rcmd(sdk, init_args))
@@ -240,13 +255,13 @@ def cmd_start(args) -> int:
             print(f"设计表就位：{dt}")
         else:
             print(f"提示：设计表不存在（{dt}），流程会停在需要设计表处", file=sys.stderr)
+    # SDK 自带的默认门单大多只查文件在不在：不给 --gates 就用本技能自带的八件门（default-gates.json）。
     gp = Path(args.gates) if args.gates else DEFAULT_GATES
     if gp.is_file():
         text = gp.read_text(encoding="utf-8")
         posix = lambda v: str(v).replace("\\", "/")  # noqa: E731 —— JSON 里路径必须正斜杠
-        text = (text.replace("{run_dir}", posix(rd))
-                    .replace("{out_dir}", posix(outd))
-                    .replace("{python}", posix(sys.executable)))
+        text = (text.replace("{run_dir}", posix(rd)).replace("{out_dir}", posix(outd))
+                .replace("{python}", posix(sys.executable)).replace("{skill_dir}", posix(SKILL_DIR)))
         (rd / "gates.json").write_text(text, encoding="utf-8")
         print(f"质量门配置就位：{gp}")
     elif args.gates:
