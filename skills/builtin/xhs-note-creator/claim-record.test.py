@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
+sys.path.insert(0, str(here))
+import reference_fixture as rf
 script = here / "scripts" / "validate_meta.py"
 
 CAPTION_CLAIM = "每天一包，冲水喝就行"
@@ -25,6 +27,7 @@ def post(claims, caption_extra: str = "", card_content: str = "内容") -> dict:
         "caption": CAPTION_CLAIM + "。" + "字" * 150 + caption_extra,
         "hashtags": [f"#话题{i}" for i in range(5)],
         "card_count": 3,
+        rf.FIELD: rf.ANALYSIS_PATH,
         "creation_guide": {"path": "profiles/acme-test/creation-guide.md", "date": "2026-10-29"},
         "cards": [
             {"page": 1, "type": "cover", "title": "封面", "content": "封面"},
@@ -47,6 +50,7 @@ def run(meta: dict, local_files=(), draft=None) -> tuple[int, str]:
             f = folder / rel
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text("x", encoding="utf-8")
+        rf.write_analysis(folder)
         f = folder / "meta.json"
         f.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         r = subprocess.run([sys.executable, str(script), str(f)], capture_output=True, text=True, encoding="utf-8")

@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
+sys.path.insert(0, str(here))
+import reference_fixture as rf
 script = here / "scripts" / "validate_meta.py"
 GUIDE = {"path": "profiles/acme-test/creation-guide.md", "date": "2026-10-29"}
 
@@ -17,7 +19,7 @@ GUIDE = {"path": "profiles/acme-test/creation-guide.md", "date": "2026-10-29"}
 def post(guide) -> dict:
     meta = {
         "title": "测试标题", "platform": "小红书", "created_at": "2026-10-29T10:00:00+08:00",
-        "caption": "字" * 150, "hashtags": [f"#话题{i}" for i in range(5)], "claims": [],
+        "caption": "字" * 150, "hashtags": [f"#话题{i}" for i in range(5)], "claims": [], rf.FIELD: rf.ANALYSIS_PATH,
         "card_count": 3,
         "cards": [{"page": 1, "type": "cover", "title": "封面", "content": "封面"},
                   {"page": 2, "type": "content", "title": "内容", "content": "内容"},
@@ -30,6 +32,7 @@ def post(guide) -> dict:
 
 def run(meta):
     with tempfile.TemporaryDirectory() as d:
+        rf.write_analysis(Path(d))
         f = Path(d) / "meta.json"
         f.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         r = subprocess.run([sys.executable, str(script), str(f)], capture_output=True, text=True, encoding="utf-8")

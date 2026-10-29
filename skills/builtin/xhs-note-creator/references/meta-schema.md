@@ -38,6 +38,24 @@
 }
 ```
 
+## 参考帖拆解记录（reference/reference-analysis.json）
+
+```json
+{
+  "posts": [{
+    "kind": "team_supplied | team_rewrite | topic_study",
+    "source": "链接或文件名",
+    "record": "存档位置（笔记文件夹内，read_note.py 的文件夹或团队文字文件）",
+    "structure": {"hook": "", "order": "", "product_entry": "", "cta": "", "length": ""},
+    "context": {"speaker": "", "situation": "", "audience": ""}
+  }],
+  "voice": {"from": ["团队改写的存档位置"]},
+  "draft_plan": "新帖子的结构取自哪几篇的哪一部分（草稿之前写）"
+}
+```
+
+`voice` 也可以是 `{"none": "一句说明"}`（账号还没有团队改写）。帖子自己的文字与存档文字不得有连续 20 字以上相同。
+
 ## 小红书扩展字段
 
 ```json
@@ -52,6 +70,8 @@
     "path": "profiles/<账号>/creation-guide.md",
     "date": "写帖子前读的那份创作指南的最后修改日期，YYYY-MM-DD"
   },
+
+  "reference_analysis": "reference/reference-analysis.json（参考帖拆解，必填；校验按下面的形状检查）",
 
   "claims": [
     {

@@ -70,6 +70,16 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 
 按 `references/reference-search.md` 执行，核心数据 ≥2 个来源交叉验证。
 
+### 参考帖记录与拆解（issue 68，Step 2 之后、Step 3 之前；每一篇小红书帖子都做，图文、视频都一样）
+
+长文原稿之前，先把真实的参考帖存档并拆解，新帖子照拆解结果写，不凭空编。
+
+1. **存档**：团队给的每个参考帖链接，用 `skill-xhs-note-reader` 的 `read_note.py` 整篇存下来（一次一篇，走它的守卫）。团队直接发来的文字（没有链接，例如团队自己改写过的帖子）存成文件，放在团队素材所在的位置。除此之外不用别的方式读小红书，不用 `viral-template`。
+2. **拆解**：任何草稿文字之前，在本帖文件夹写 `reference/reference-analysis.json`。每个被分析的帖子写：`kind`（`team_supplied` / `team_rewrite` / `topic_study`）、`source`、`record`（存档位置）、`structure`（`hook` `order` `product_entry` `cta` `length`）、`context`（`speaker` `situation` `audience`）。再写 `draft_plan`：新帖子的结构取自哪几篇的哪一部分，必须在写草稿之前写好。可拆解的帖子可以是团队给的，也可以是本帖题材自己的 topic study 存下的图集。
+3. **文风**：团队的改写是文风参考。改写存在哪里，是这个账号自己的规矩，写在账号创作指南的“帖子”部分（上面已读完），本 SKILL 不指定。`voice` 写已存档的 `team_rewrite` 记录（`{"from": [...]}`）；账号还没有改写时写 `{"none": "一句明白的说明"}`，并明确告诉用户没有文风参考，不编文风参考。
+4. **写新帖**：按拆解写，不抄参考帖的任何句子（连续 20 字以上相同，校验会拒绝）。`meta.json` 的 `reference_analysis` 填该文件路径。
+5. **停下**：没有任何可拆解的真实帖子（团队没给、本帖也没有 topic study），或守卫拒绝（`tripped`、`daily cap`、`no login`、`using the account`）时，在写草稿之前停下，告诉用户原因；不编结构，不循环重试。
+
 ### Step 3 — 写长文原稿（2000-4000 字）
 
 从 H2 开始（不写 H1），写完**先给用户确认**再继续。
@@ -130,9 +140,9 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 ```
 outputs/主题名/{YYYY-MM-DD}/{短标题}_{时间戳}/
 ├── {完整标题}.md        # 长文原稿
-├── meta.json            # 元数据（卡片/分镜/caption/hashtags/claims 声明记录）
+├── meta.json            # 元数据（卡片/分镜/caption/hashtags/claims 声明记录 / reference_analysis 参考帖拆解）
 ├── images/              # 最终卡图 / 封面
-└── reference/           # materials.json / 搜索结果
+└── reference/           # materials.json / 搜索结果 / reference-analysis.json（参考帖拆解）/ 存档的参考帖
 ```
 
 目录名走脚本标准化：`python3 skills/builtin/xhs-note-creator/scripts/normalize_slug.py "标题" --with-ts`

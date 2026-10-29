@@ -29,6 +29,12 @@ Claim record (both post_formats, issue 102): top-level `claims` list is required
 
 Creation guide (issue 125): top-level `creation_guide` {path, date} is required: the guide the writer read first.
 
+Reference analysis (issue 68): top-level `reference_analysis` (path, inside the note folder, of reference/reference-analysis.json) is required.
+- the file parses; `posts[]` is non-empty; each post has kind (team_supplied | team_rewrite | topic_study), source, record (an existing
+  path, in the note folder or as given), structure{hook, order, product_entry, cta, length} and context{speaker, situation, audience}
+- `voice` is {"from": [non-empty list]} or {"none": "non-empty statement"}; `draft_plan` is non-empty
+- the post's own text shares no run of 20+ characters with a saved reference text (caption.md in a record folder, or the record file)
+
 Exit 0 clean, 1 on errors. Prints one "ERROR:" / "WARN:" per line.
 
 Usage: python3 validate_meta.py path/to/meta.json
@@ -73,6 +79,73 @@ def check_creation_guide(meta: dict, err) -> None:
         err("missing field: creation_guide (path of the account's creation guide the writer read first, and its date)")
     elif not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(g.get("date") or "")):
         err("creation_guide.date must be YYYY-MM-DD (the guide's last-changed date)")
+
+
+REF_KINDS = ("team_supplied", "team_rewrite", "topic_study")
+REF_STRUCTURE = ("hook", "order", "product_entry", "cta", "length")
+REF_CONTEXT = ("speaker", "situation", "audience")
+COPY_RUN = 20
+
+
+def _squash(s: str) -> str:
+    return re.sub(r"\s+", "", s)
+
+
+def check_reference_analysis(meta: dict, folder: Path, err) -> None:
+    rel = str(meta.get("reference_analysis") or "").strip()
+    if not rel:
+        err("missing field: reference_analysis (path of reference/reference-analysis.json, the decomposition of the reference posts)")
+        return
+    f = folder / rel
+    try:
+        a = json.loads(f.read_text(encoding="utf-8"))
+        assert isinstance(a, dict)
+    except Exception as e:
+        err(f"reference_analysis file {rel} is missing or does not parse: {e}")
+        return
+    posts = a.get("posts")
+    saved: list[str] = []
+    if not isinstance(posts, list) or not posts:
+        err("reference_analysis lists no analysed post (posts[] is empty)")
+        posts = []
+    for i, p in enumerate(posts):
+        at = f"reference_analysis posts[{i}]"
+        if not isinstance(p, dict):
+            err(f"{at} must be an object")
+            continue
+        if p.get("kind") not in REF_KINDS:
+            err(f"{at}.kind must be one of {REF_KINDS}, got {p.get('kind')!r}")
+        if not str(p.get("source") or "").strip():
+            err(f"{at}.source is empty")
+        rec = str(p.get("record") or "").strip()
+        # a record may sit outside the note folder (read_note.py's own folder, the team's material folder)
+        r = folder / rec if (folder / rec).exists() else Path(rec)
+        if not rec:
+            err(f"{at}.record is empty")
+        elif not r.exists():
+            err(f"{at}.record does not exist (in the note folder or as given): {rec}")
+        else:
+            cap = r / "caption.md" if r.is_dir() else r
+            if cap.is_file():
+                saved.append(_squash(cap.read_text(encoding="utf-8")))
+        for key, fields in (("structure", REF_STRUCTURE), ("context", REF_CONTEXT)):
+            d = p.get(key)
+            for k in fields:
+                if not isinstance(d, dict) or not str(d.get(k) or "").strip():
+                    err(f"{at}.{key}.{k} is empty")
+    v = a.get("voice")
+    if not (isinstance(v, dict) and ((isinstance(v.get("from"), list) and v["from"])
+                                     or (not v.get("from") and str(v.get("none") or "").strip()))):
+        err("reference_analysis voice must be {\"from\": [saved team rewrites]} or {\"none\": \"plain statement\"}")
+    if not str(a.get("draft_plan") or "").strip():
+        err("reference_analysis draft_plan is empty (which structure the new post takes from which posts)")
+    mine = _squash(post_text(meta, folder))
+    grams = {mine[i:i + COPY_RUN] for i in range(len(mine) - COPY_RUN + 1)}
+    for s in saved:
+        for i in range(len(s) - COPY_RUN + 1):
+            if s[i:i + COPY_RUN] in grams:
+                err(f"reference_analysis: the post copies {COPY_RUN}+ characters of a saved reference text: {s[i:i + COPY_RUN]!r}")
+                break
 
 
 def check_claims(meta: dict, folder: Path, err) -> None:
@@ -227,6 +300,7 @@ def main() -> int:
                 err("for post_format=video, cards must be omitted or a single cover card")
 
     check_creation_guide(meta, err)
+    check_reference_analysis(meta, p.resolve().parent, err)
     check_claims(meta, p.resolve().parent, err)
 
     for w in warns:
