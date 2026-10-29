@@ -59,6 +59,17 @@ say() { printf '%s %s\n' "$1" "$2"; [ "$1" = FAIL ] && CHECK_FAILED=1; return 0;
 pass() { say PASS "$STEP: $1"; }
 fail() { say FAIL "$STEP: $1"; }
 note() { say NOTE "$STEP: $1"; }
+# The engine saved in outputs/_harness/config.json (EASEL_AGENT_RUNTIME wins, as in easel/harnesses/store.py).
+# None saved means OpenClaw, as before. Only the OpenClaw engine needs Easel's OpenClaw profile.
+easel_engine() {
+  local e=${EASEL_AGENT_RUNTIME:-}
+  [ -n "$e" ] || e=$(sed -n 's/.*"runtime"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/outputs/_harness/config.json" 2>/dev/null | head -1)
+  printf '%s' "${e:-openclaw}" | tr 'A-Z' 'a-z' | tr -d ' '
+}
+openclaw_engine() { [ "$(easel_engine)" = openclaw ]; }
+# an OpenClaw-only part left out of this run; setup.sh names SKIPPED in its closing line
+SKIPPED=""
+skip_openclaw() { say SKIP "$STEP: $1 skipped, OpenClaw is not the engine (engine: $(easel_engine))"; SKIPPED="$SKIPPED $STEP"; }
 # slow checks drive the real programs; off only for the tests, and never silently
 call_checks_on() {
   [ "$CALL_CHECKS" = 1 ] && return 0
@@ -310,7 +321,8 @@ check_libtv() {
   else fail "a shell profile mentions libtv, so LibTV's own installer was run:$bad"; fi
   if [ ! -e "$HOME/.libtv/libtv" ]; then pass "no program in ~/.libtv (where LibTV's installer puts it)"
   else fail "there is a program at $HOME/.libtv/libtv, so LibTV's own installer was run"; fi
-  if libtv_env_ok; then pass "the OpenClaw config sets LIBTV_DISABLE_REPORT=1 in the gateway's environment"
+  if ! openclaw_engine; then skip_openclaw "the LIBTV_DISABLE_REPORT setting in the OpenClaw config"
+  elif libtv_env_ok; then pass "the OpenClaw config sets LIBTV_DISABLE_REPORT=1 in the gateway's environment"
   else fail "the OpenClaw config does not set LIBTV_DISABLE_REPORT=1 in its env block ($OC_CONFIG), so the program would report every command to LibTV"; fi
   libtv_prog_ok || return 0
   call_checks_on || return 0
@@ -482,6 +494,7 @@ check_display_font() {
 
 check_search_deny() {
   STEP=search-deny
+  openclaw_engine || { skip_openclaw "hiding web_search in the OpenClaw config"; return 0; }
   local verdict
   verdict=$(python3 - "$OC_CONFIG" <<'PY'
 import json, sys

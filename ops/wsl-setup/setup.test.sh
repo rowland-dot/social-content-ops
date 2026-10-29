@@ -894,6 +894,40 @@ mkdir -p "$W/dfonts"; cp "$W/font.good" "$W/dfonts/LXGWWenKai-Medium.ttf"       
 run_setup --only display-font
 expect "the right file that the font list does not show: only the cache is refreshed, nothing is downloaded" bash -c '[ "$2" = 0 ] && ! grep -q "^curl" "$1/calls.log" && grep -qxF "fc-cache -f $1/dfonts" "$1/calls.log" && grep -q "^PASS display-font:.*LXGW WenKai" "$3"' _ "$W" "$RC" "$OUT"
 
+echo "== another engine (Claude Code or Codex) is chosen: no OpenClaw on the machine =="
+# engine_world NAME ENGINE: a machine with Easel's venv and the chosen engine saved, and no OpenClaw profile or program
+engine_world() {
+  world "$1"
+  rm -f "$W/home/.openclaw-easel/openclaw.json" "$W/bin/openclaw"
+  mkdir -p "$W/root/outputs/_harness"
+  printf '{\n  "runtime": "%s"\n}\n' "$2" > "$W/root/outputs/_harness/config.json"
+}
+for eng in claude codex; do
+  engine_world noOC_$eng $eng
+  run_setup
+  expect "$eng engine: exits 0 with no OpenClaw profile"          test "$RC" = 0
+  expect "$eng engine: the preflight does not refuse"             bash -c '! grep -q "Cannot start" "$1"' _ "$OUT"
+  expect "$eng engine: it ends ALL PASS"                          has "^ALL PASS" "$OUT"
+  expect "$eng engine: no check failed"                           bash -c '! grep -q "^FAIL" "$1"' _ "$OUT"
+  expect "$eng engine: search-deny is skipped with a plain note"  has "^SKIP search-deny:.*OpenClaw is not the engine" "$OUT"
+  expect "$eng engine: the LibTV environment setting is skipped"  has "^SKIP libtv:.*LIBTV_DISABLE_REPORT.*OpenClaw is not the engine" "$OUT"
+  expect "$eng engine: the skipped steps are named at the end"    has "^Skipped, OpenClaw only.*search-deny.*libtv" "$OUT"
+  expect "$eng engine: LibTV's program is still installed and checked" has "^PASS libtv:.*pinned program" "$OUT"
+  expect "$eng engine: the OpenClaw program is never called"      bash -c '! grep -q "^openclaw" "$1/calls.log"' _ "$W"
+  expect "$eng engine: no OpenClaw profile is created"            test ! -e "$W/home/.openclaw-easel/openclaw.json"
+  run_setup
+  expect "$eng engine: a second run also ends ALL PASS"           has "^ALL PASS" "$OUT"
+done
+
+engine_world noOC_ocfile claude
+echo '{"tools": {}}' > "$W/home/.openclaw-easel/openclaw.json"     # a profile that is there but not the engine's
+run_setup --only search-deny
+expect "the saved engine decides, not whether a profile exists: still skipped and untouched" bash -c '[ "$1" = 0 ] && grep -q "^SKIP search-deny" "$2" && ! grep -q "^openclaw" "$3/calls.log"' _ "$RC" "$OUT" "$W"
+
+engine_world noOC_saved openclaw
+run_setup
+expect "OpenClaw saved as the engine: a missing profile still refuses" bash -c '[ "$1" = 2 ] && grep -q "OpenClaw profile" "$2"' _ "$RC" "$OUT"
+
 echo
 echo "failures: $FAILS"
 exit $FAILS

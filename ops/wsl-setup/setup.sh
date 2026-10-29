@@ -8,7 +8,7 @@
 #   bash ops/wsl-setup/setup.sh --list        print the step names
 #
 # Run it as the user the Easel gateway runs as (root here), AFTER Easel's own installer (setup.sh at the
-# repo root) has run: it needs Easel's .venv and its OpenClaw profile. It changes none of Easel's tracked
+# repo root) has run: it needs Easel's .venv, and its OpenClaw profile when OpenClaw is the engine (outputs/_harness/config.json; on Claude Code or Codex the OpenClaw-only steps are skipped and named). It changes none of Easel's tracked
 # files. No API key, account or paid service is involved; Hugging Face is only anonymous file downloads.
 # The libtv step installs LibTV's program only; the owner's login to it (a browser approval) is not done here.
 #
@@ -41,7 +41,7 @@ preflight() {
   [ "$(uname -s)" = Linux ] || miss="$miss\n  - this is not Linux; run it inside WSL"
   [ -x "$PY" ] && "$PY" -c 'import easel' 2>/dev/null \
     || miss="$miss\n  - Easel's Python environment is missing or has no easel in it ($VENV); run Easel's own installer first"
-  [ -f "$OC_CONFIG" ] || miss="$miss\n  - Easel's OpenClaw profile is missing ($OC_CONFIG); run Easel's own installer first"
+  openclaw_engine && [ ! -f "$OC_CONFIG" ] && miss="$miss\n  - Easel's OpenClaw profile is missing ($OC_CONFIG); run Easel's own installer first"
   command -v git >/dev/null 2>&1 || miss="$miss\n  - git is not installed"
   if [ -n "$miss" ]; then
     printf 'Cannot start. Missing:%b\n' "$miss"
@@ -232,10 +232,11 @@ PY
   return $rc
 }
 
-have_libtv() { libtv_prog_ok && libtv_env_ok; }
+have_libtv() { libtv_prog_ok && { ! openclaw_engine || libtv_env_ok; }; }
 do_libtv() {
   libtv_prog_ok || libtv_install_program || return 1
-  if ! libtv_env_ok; then
+  # the environment setting lives in the OpenClaw profile, so only the OpenClaw engine has one
+  if openclaw_engine && ! libtv_env_ok; then
     command -v openclaw >/dev/null 2>&1 || { echo "openclaw is not on PATH; run Easel's own installer first"; return 1; }
     # one key only: the rest of the config's env block (and everything else in it) stays as it is. OpenClaw
     # reloads its config after the write; that the agent's own shell then has the variable is shown by asking
@@ -303,6 +304,9 @@ preflight || exit 2
 for s in $selected; do
   fn=${s//-/_}
   printf '== %s ==\n' "$s"
+  if [ "$s" = search-deny ] && ! openclaw_engine; then
+    echo "skipped: $s (OpenClaw only)"; "check_$fn"; continue
+  fi
   if "have_$fn"; then
     echo "already done: $s"
   else
@@ -311,6 +315,7 @@ for s in $selected; do
   fi
   "check_$fn"
 done
+[ -z "$SKIPPED" ] || echo "Skipped, OpenClaw only (the engine is $(easel_engine)):$SKIPPED"
 echo
 if [ "$CHECK_FAILED" = 0 ]; then echo "ALL PASS"; else echo "SOME CHECKS FAILED"; fi
 exit "$CHECK_FAILED"

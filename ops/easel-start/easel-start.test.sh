@@ -27,6 +27,7 @@ mkshim() { cat > "$1"; chmod +x "$1"; }
 
 # world NAME [flag...]  builds a fresh fake machine under $T/NAME and sets W and R.
 # flags: web-up, web-starts (the window brings the web workspace up at once), web-slow (two seconds later), gw-up, gw-starts (a gateway start brings it up),
+#        engine=claude|codex|api (saved in outputs/_harness/config.json; none saved = OpenClaw), no-engine-prog (the claude and codex programs are not on the path),
 #        no-node (Node is not on the interactive shell's path), no-openclaw (Node is, openclaw is not), ping=ok|step1|step2|both|crash
 world() {
   local name=$1; shift
@@ -50,6 +51,9 @@ world() {
       no-node) : > "$W/no.node" ;;
       no-openclaw) : > "$W/no.openclaw" ;;
       ping=*) echo "${f#ping=}" > "$W/ping.mode" ;;
+      engine=*) mkdir -p "$R/outputs/_harness"; printf '{\n  "runtime": "%s"\n}\n' "${f#engine=}" > "$R/outputs/_harness/config.json"
+                echo "${f#engine=}" > "$W/engine" ;;
+      no-engine-prog) : > "$W/no.engine.prog" ;;
     esac
   done
   # Node as nvm leaves it: on the path only for a shell that reads .bashrc
@@ -62,6 +66,10 @@ EOF
 exit 0
 EOF
   [ -e "$W/no.openclaw" ] && rm -f "$W/nodebin/openclaw"
+  for t in claude codex; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$W/nodebin/$t"; chmod +x "$W/nodebin/$t"
+    [ -e "$W/no.engine.prog" ] && rm -f "$W/nodebin/$t"
+  done
   [ -e "$W/no.node" ] || printf 'export PATH="%s/nodebin:$PATH"\n' "$W" > "$W/home/.bashrc"
   # curl answers the web workspace's status address only while web.up exists, like a real server that is up
   mkshim "$W/bin/curl" <<'EOF'
@@ -106,6 +114,11 @@ case "${1:-} ${2:-}" in
     else echo "[easel] Gateway may not be ready yet — check: tail -f /tmp/easel-gateway.log"; fi ;;
   "gateway stop"|"gateway restart") echo "FORBIDDEN easel $*" >> "$FAKE_W/calls.log" ;;
   "ping ")
+    # Claude Code, Codex and the API engine need no gateway and no openclaw program: Easel asks the engine itself
+    if [ -e "$FAKE_W/engine" ]; then
+      if [ "$(cat "$FAKE_W/ping.mode")" = ok ]; then echo; echo "$(cat "$FAKE_W/engine") 连通性测试通过"; exit 0; fi
+      echo; echo "$(cat "$FAKE_W/engine") 连通性失败：请检查原生登录"; exit 1
+    fi
     # the real ping crashes with a traceback when openclaw is missing
     command -v openclaw >/dev/null || { echo "Traceback (most recent call last):"; echo "FileNotFoundError: openclaw CLI not found"; exit 1; }
     ok=$(printf '\033[0;32mOK\033[0m'); fail=$(printf '\033[0;31mFAIL\033[0m')
@@ -234,6 +247,41 @@ expect "Node present but no openclaw: non-zero exit"              test "$RC" != 
 expect "Node present but no openclaw: the same plain message"     out_has "Node or the openclaw program was not found"
 expect "Node present but no openclaw: no traceback reaches the reader" out_lacks "Traceback"
 expect "Node present but no openclaw: nothing is started"         calls_lacks "easel gateway"
+
+# ---- Another engine is chosen (Claude Code or Codex): no OpenClaw program, no gateway --------------------------
+for eng in claude codex; do
+  world "$eng" web-starts engine=$eng no-openclaw
+  run
+  expect "$eng engine: exit 0 with no openclaw program"              test "$RC" = 0
+  expect "$eng engine: the verdict says Easel is ready"              out_has "EASEL READY"
+  expect "$eng engine: the verdict names the engine, not a gateway"  out_has "$eng engine answered the ping"
+  expect "$eng engine: the verdict does not claim a gateway"         out_lacks "gateway up"
+  expect "$eng engine: one window is opened"                         calls_count "explorer.exe" 1
+  expect "$eng engine: the gateway is never asked about or started"  calls_lacks "easel gateway"
+  expect "$eng engine: the connection test runs once"                calls_count "easel ping" 1
+  expect "$eng engine: nothing is stopped or restarted"              calls_lacks "FORBIDDEN"
+done
+
+world api web-up engine=api no-openclaw no-engine-prog
+run
+expect "api engine: ready without any engine program or gateway"   bash -c '[ "$1" = 0 ] && ! grep -q "easel gateway" "$2/calls.log"' _ "$RC" "$W"
+
+world engfail web-up engine=claude no-openclaw ping=step2
+run
+expect "engine ping fails: non-zero exit"                          test "$RC" != 0
+expect "engine ping fails: the verdict names the engine"           out_has "ping failed on the claude engine."
+expect "engine ping fails: the engine's own words are shown"       out_has "请检查原生登录"
+expect "engine ping fails: no claim that Easel is ready"           out_lacks "EASEL READY"
+
+world engnoprog web-starts engine=claude no-openclaw no-engine-prog
+run
+expect "engine program missing: non-zero exit"                     test "$RC" != 0
+expect "engine program missing: the verdict names the program"     out_has "claude program was not found"
+expect "engine program missing: no window, no ping"                bash -c '! grep -q "explorer.exe\|easel ping" "$1/calls.log"' _ "$W"
+
+world ocsaved web-starts gw-starts engine=openclaw no-openclaw
+run
+expect "OpenClaw saved as the engine: still refuses without openclaw" out_has "Node or the openclaw program was not found"
 
 echo
 echo "failures: $FAILS"
