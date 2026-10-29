@@ -61,8 +61,11 @@ def settings(outputs: Path, env: dict[str, str]) -> dict:
     auto_approve = data.get("codex_auto_approve", False)
     if not isinstance(auto_approve, bool):
         raise HarnessError("Codex 自动授权设置必须为开关")
+    claude_auto_approve = data.get("claude_auto_approve", True)
+    if not isinstance(claude_auto_approve, bool):
+        raise HarnessError("Claude Code 自动授权设置必须为开关")
     return {"runtime": runtime, "models": models, "sandbox": sandbox,
-            "codex_auto_approve": auto_approve}
+            "codex_auto_approve": auto_approve, "claude_auto_approve": claude_auto_approve}
 
 
 def binding_path(sessions: Path, key: str) -> Path:

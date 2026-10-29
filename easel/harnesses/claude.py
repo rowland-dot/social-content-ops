@@ -139,6 +139,8 @@ class ClaudeAdapter:
                 if isinstance(path, str) and any(
                         _inside_workspace(path, folder) for folder in (request.cwd, *mapped)):
                     return _allow(tool_input)
+            if request.claude_auto_approve:
+                return _allow(tool_input)
             detail = tool_input.get("command") or tool_input.get("file_path") or json.dumps(
                 tool_input, ensure_ascii=False)
             answers = await put([{
