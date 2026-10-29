@@ -1,4 +1,4 @@
-"""Check for the photo-scene skill's wording (issues 58 to 127 and 136).
+"""Check for the photo-scene skill's wording (issues 58 to 127 and 136, including the emoji-in-lettering wording of issue 100).
 
 Run: python skills/builtin/xhs-reference-visual/wrapper.test.py   (exit 0 = pass). The cases are in
 tests/test_xhs_reference_visual_skill.py, which CI collects; this file sits beside the skill because the edit guard

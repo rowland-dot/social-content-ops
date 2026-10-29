@@ -2997,3 +2997,59 @@ def _issue_127_failures(skill_root, skill_text):
 def test_issue_127_titles_match_the_cover_and_faces_match_the_approved_cover():
     failures = _issue_127_failures(SKILL_DIR, _text(SKILL_DIR / "SKILL.md"))
     assert not failures, "\n".join(failures)
+
+
+# easel-setup-gaps issue 100: emojis in a card's lettering are drawn by the image model in the Apple iOS emoji style.
+# Same assertions in both test files.
+ISSUE_100E_QUOTES = [
+    "Let the image model draw them",
+    "Book a session for emoji, but what is the emoji front PC font? I only want the apple ios emoji looks",
+    "Image model draws iOS-style (Recommended)",
+]
+ISSUE_100E_SKILL = ["photo-scene-emoji.md", "iOS"]
+ISSUE_100E_DRAW = ["字里带表情的卡", "每个表情", "版面计划", "由出图模型画成 Apple iOS 样式", "photo-scene-emoji.md"]
+ISSUE_100E_REF = ISSUE_100E_QUOTES + [
+    "easel-setup-gaps issue 100", "Fix the script, code sets them", "Noto Color Emoji", "Segoe UI Emoji", "seguiemj.ttf",
+    "fc-list", "C:\\Windows\\Fonts", "Apple iOS", "每一个表情", "任何一张字里带表情的卡", "封面和每一张卡",
+    "版面计划", "blocks", "手绘字", "图标清单", "图标 | 意思 | 出现的卡", "缺了", "谷歌", "微软", "线条图标", "涂鸦",
+    "不添加、不安装、不改任何表情字体", "text_on_image.py", "不读、不列、不报包装上印的字"]
+ISSUE_100E_ICON_LIST = ["表情", "iOS"]
+ISSUE_100E_CHECK_ORDER = ["表情缺了或不是 iOS 样式"]
+ISSUE_100E_NAMES_GONE = ["[the brand]", "Ro 的话"]  # the new reference uses the role, not the owner's name
+
+
+def _issue_100e_failures(skill_root, skill_text):
+    fails = []
+    for need in ISSUE_100E_SKILL:
+        if need not in skill_text:
+            fails.append(f"easel issue 100: SKILL.md does not say: {need}")
+    draw = next((l for l in skill_text.splitlines() if l.startswith("- 图标（issue 86）")), "")
+    for need in ISSUE_100E_DRAW:
+        if need not in draw:
+            fails.append(f"easel issue 100: the SKILL.md drawing rule for icons does not say: {need}")
+    ref_path = skill_root / "references" / "photo-scene-emoji.md"
+    ref = ref_path.read_text(encoding="utf-8") if ref_path.is_file() else ""
+    if not ref:
+        fails.append("easel issue 100: references/photo-scene-emoji.md does not exist")
+    for need in ISSUE_100E_REF:
+        if ref and need not in ref:
+            fails.append(f"easel issue 100: the emoji reference does not say: {need}")
+    for name in ISSUE_100E_NAMES_GONE:
+        if name in ref:
+            fails.append(f"easel issue 100: the emoji reference names a brand: {name}")
+    icons = (skill_root / "references" / "photo-scene-icon-list.md").read_text(encoding="utf-8")
+    for need in ISSUE_100E_ICON_LIST:
+        if need not in icons:
+            fails.append(f"easel issue 100: the icon-list reference does not say: {need}")
+    order = (skill_root / "references" / "photo-scene-check-order.md").read_text(encoding="utf-8")
+    for need in ISSUE_100E_CHECK_ORDER:
+        if need not in order:
+            fails.append(f"easel issue 100: the check-order table does not list: {need}")
+    if len(skill_text.splitlines()) > 200:
+        fails.append("easel issue 100: SKILL.md is over the 200 line limit")
+    return fails
+
+
+def test_easel_issue_100_emojis_are_drawn_by_the_image_model_in_ios_style():
+    failures = _issue_100e_failures(SKILL_DIR, _text(SKILL_DIR / "SKILL.md"))
+    assert not failures, "\n".join(failures)
