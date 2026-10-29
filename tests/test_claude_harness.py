@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -153,7 +154,7 @@ def test_permission_request_reaches_ask_and_the_answer_is_passed_back(tmp_path, 
         assert "Always" not in str(options)
         return {questions[0]["questionId"]: [options[0 if allow else 1]["label"]]}
 
-    run_claude(claude_request(tmp_path, "permission"), answer)
+    run_claude(replace(claude_request(tmp_path, "permission"), claude_auto_approve=False), answer)
     assert "read public file" in asked[0][0]["question"]
     response = control_response(tmp_path)
     assert response["behavior"] == ("allow" if allow else "deny")
@@ -161,6 +162,39 @@ def test_permission_request_reaches_ask_and_the_answer_is_passed_back(tmp_path, 
         assert response["updatedInput"] == {"command": "read public file"}
     else:
         assert response["message"]
+
+
+def test_tool_use_is_allowed_without_a_question_box_by_default(tmp_path):
+    run_claude(claude_request(tmp_path, "permission"))  # `refuse` fails the test if a box opens
+    response = control_response(tmp_path)
+    assert response["behavior"] == "allow"
+    assert response["updatedInput"] == {"command": "read public file"}
+
+
+def test_auto_approve_still_denies_writes_in_read_only(tmp_path):
+    run_claude(claude_request(tmp_path, "write", FAKE_CLAUDE_PATH=str(tmp_path / "a.md")))
+    assert control_response(tmp_path)["behavior"] == "deny"
+
+
+def test_auto_approve_still_sends_user_questions_to_the_box(tmp_path):
+    asked = []
+
+    async def answer(questions):
+        asked.append(questions)
+        return {questions[0]["questionId"]: ["A"]}
+
+    run_claude(claude_request(tmp_path, "question"), answer)
+    assert asked
+
+
+def test_claude_auto_approve_setting_defaults_on_and_must_be_a_switch(tmp_path):
+    assert store.settings(tmp_path, {})["claude_auto_approve"] is True
+    config = tmp_path / "_harness" / "config.json"
+    store.write_json(config, {"claude_auto_approve": False})
+    assert store.settings(tmp_path, {})["claude_auto_approve"] is False
+    store.write_json(config, {"claude_auto_approve": "false"})
+    with pytest.raises(HarnessError):
+        store.settings(tmp_path, {})
 
 
 def test_user_question_is_answered_through_the_question_box(tmp_path):
@@ -188,7 +222,7 @@ def test_noninteractive_permission_is_an_error_not_success(tmp_path):
         raise HarnessError("requires interactive approval")
 
     with pytest.raises(HarnessError, match="流式对话"):
-        run_claude(claude_request(tmp_path, "permission"), unavailable)
+        run_claude(replace(claude_request(tmp_path, "permission"), claude_auto_approve=False), unavailable)
 
 
 def test_read_only_never_writes_and_does_not_ask(tmp_path):
@@ -220,8 +254,9 @@ def test_workspace_write_asks_before_writing_outside_the_project(tmp_path):
         asked.append(questions)
         return {questions[0]["questionId"]: ["拒绝"]}
 
-    run_claude(claude_request(tmp_path, "write", sandbox="workspace-write",
-                              FAKE_CLAUDE_PATH=str(tmp_path.parent / "elsewhere.md")), deny)
+    run_claude(replace(claude_request(tmp_path, "write", sandbox="workspace-write",
+                                      FAKE_CLAUDE_PATH=str(tmp_path.parent / "elsewhere.md")),
+                       claude_auto_approve=False), deny)
     assert asked
     assert control_response(tmp_path)["behavior"] == "deny"
 

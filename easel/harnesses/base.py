@@ -35,6 +35,7 @@ class RunRequest:
     command: tuple[str, ...] = ()
     session_key: str = ""
     codex_auto_approve: bool = False
+    claude_auto_approve: bool = True
 
 
 class Adapter(Protocol):
