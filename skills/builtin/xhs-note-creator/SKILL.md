@@ -119,6 +119,8 @@ python3 skills/builtin/xhs-note-creator/scripts/analyze_material.py <path>... \
 
 只有用户在 Step 0 选了照片场景帖，才用 `photo_scene`；本 SKILL 不自己判断、不替用户选。照片场景帖的文案、caption、hashtags 和文本门仍照本 SKILL。
 
+卡或帖子计划成插画、又画到人时（issue 139），先读 [illustrated-people.md](references/illustrated-people.md)：人物画成风格化的插画，从不半写实；照片场景帖不受它影响。
+
 > 纯文字/概念/数据卡**不再走用户自备 t2i**——统一由 card-xiaohongshu 渲染，保证视觉质量；只有「真实照片卡」才走 Pillow 路径。
 
 #### 5B. 视频帖：写分镜脚本
@@ -189,5 +191,6 @@ python skills/builtin/card-design/scripts/card_audit.py audit -f "outputs/主题
 - 钩子/标题公式 → `skills/shared/references/hook-title-formulas.md`（公共源）
 - `references/material-intake.md` — 素材处理流程
 - `references/image-sourcing.md` — 图片来源处理
+- `references/illustrated-people.md` — 插画卡里的人物怎么画、怎么查
 - `references/meta-schema.md` — 元数据字段定义
 - `references/output-spec.md` — 输出目录规范
