@@ -20,6 +20,10 @@ outputs/{具体主题}/
 
 每篇笔记的 `meta.json` 里都有 `claims`：帖子自己写的每一句事实声明，各自带证据位置或兜底做法（删掉 / 改写）。字段和规则见 `meta-schema.md`。商品包装上印的文字不算声明，也不算证据，不进这份记录。
 
+## 参考帖拆解（reference_analysis）
+
+每篇笔记的 `reference/reference-analysis.json` 记录被存档、被拆解的真实参考帖和 `draft_plan`，`meta.json.reference_analysis` 指向它。字段见 `meta-schema.md`。
+
 ## 文件命名规则
 
 **目录名和文件名**中以下字符必须去除或替换为 `_`：
