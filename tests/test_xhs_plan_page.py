@@ -44,7 +44,8 @@ ICONS_HEAD = "| 图标 | 意思 | 出现的卡 |\n|---|---|---|\n"
 SETS_ROWS = (
     "| 套A（冷水化开） | oat-water-A.png | 3200 | 4100 | 7300 | 步骤卡的排法 & 小框 |\n"
     "| 套B（早餐台面） | oat-breakfast-B.png | 1500 | 2900 | 4400 | 封面构图 |\n"
-    "| 套C（蓝杯特写） | oat-cup-C.png | 900 | 2100 | 3000 | 封面的特写 |\n")
+    "| 套C（蓝杯特写） | oat-cup-C.png | 900 | 2100 | 3000 | 封面的特写 |\n"
+    "| 套D（窗边下午茶） | oat-tea-D.png | 800 | 1700 | 2500 | 封面的光 |\n")
 CARDS_ROWS = (
     "| 1 | 一份是多少？ | 打开的量勺 | 厨房台面，舀一勺 | 量勺、玻璃杯 | 俯拍 | 一勺就够 | 主角 | 手从右侧入画 | 套A（冷水化开） |\n"
     "| 2 | 冷水能化开吗？ | 玻璃杯 | 倒水，粉末在落 | 玻璃杯、勺子 | 平视 | 冷水也能化 <开> | 很小 | 无 | 套B（早餐台面） |\n")
@@ -57,7 +58,8 @@ AXES_LINE = "三个轴：角度、取景、领头"
 DIRECTIONS_ROWS = (
     "| A | 套A（冷水化开） | 俯拍 | 近景 | 量勺里的粉 |  | 一勺粉倒进水里就化开，记住“不用搅” | 俯拍对平视和斜侧；近景对中景和特写；量勺里的粉领头，另两个是桌面和杯子 |\n"
     "| B | 套B（早餐台面） | 平视 | 中景 | 整个早餐台面 | 第 2 张：用了倒水的画面，选 B 则第 2 张改成勺子搅拌 | 满桌早餐里一杯清水，记住“早上顺手就能喝” | 平视对俯拍和斜侧；中景对近景和特写；整个早餐台面领头，另两个是粉和杯子 |\n"
-    "| C | 套C（蓝杯特写） | 斜侧 45 度 | 特写 | 手里的杯子 |  | 一只握着的蓝杯，记住“随身带着喝” | 斜侧 45 度对俯拍和平视；特写对近景和中景；手里的杯子领头，另两个是粉和桌面 |\n")
+    "| C | 套C（蓝杯特写） | 斜侧 45 度 | 特写 | 手里的杯子 |  | 一只握着的蓝杯，记住“随身带着喝” | 斜侧 45 度对俯拍和平视；特写对近景和中景；手里的杯子领头，另两个是粉和桌面 |\n"
+    "| D | 套D（窗边下午茶） | 仰拍 | 远景 | 窗边的光 |  | 一扇窗和一只杯子，记住“下午也能喝” | 仰拍对俯拍、平视和斜侧；远景对近景、中景和特写；窗边的光领头，另三个是粉、桌面和杯子 |\n")
 ICONS_ROWS = (
     "| 细线对勾，线条，线宽 2 | 这一步做完了 | 1、2 |\n"
     "| 水滴，填充 | 加水 | 2 |\n")
@@ -112,10 +114,10 @@ COMPANIONS = {
 @pytest.fixture
 def work(tmp_path):
     (tmp_path / "image-sets").mkdir()
-    for name in ("oat-water-A.png", "oat-breakfast-B.png", "oat-cup-C.png"):
+    for name in ("oat-water-A.png", "oat-breakfast-B.png", "oat-cup-C.png", "oat-tea-D.png"):
         (tmp_path / "image-sets" / name).write_bytes(PNG)
     (tmp_path / "images").mkdir()
-    for letter in "ABC":
+    for letter in "ABCD":
         (tmp_path / "images" / f"cover-{letter}.png").write_bytes(PNG)
     (tmp_path / "refs").mkdir()
     for name in ("identity", "pack", "state", "lettering"):
@@ -340,14 +342,15 @@ def test_two_studied_set_rows_with_the_same_name_stop_the_build(work):
 
 def test_each_cover_direction_is_on_the_plan_page_exactly_as_written_beside_its_studied_sets_image(work):
     page = ok(work, plan_text(), "--sets-folder", str(work / "image-sets"))
-    assert [d["direction"] for d in page.directions] == ["A", "B", "C"]
+    assert [d["direction"] for d in page.directions] == ["A", "B", "C", "D"]
     assert page.directions[0]["row"] == {
         "方向": "A", "借的图集": "套A（冷水化开）", "角度": "俯拍", "取景": "近景", "领头": "量勺里的粉", "撞上的卡和改法": "",
         "记忆点": "一勺粉倒进水里就化开，记住“不用搅”",
         "和另外两个怎么不同": "俯拍对平视和斜侧；近景对中景和特写；量勺里的粉领头，另两个是桌面和杯子"}
     assert page.directions[1]["row"]["撞上的卡和改法"] == "第 2 张：用了倒水的画面，选 B 则第 2 张改成勺子搅拌"
     assert page.directions[2]["row"]["角度"] == "斜侧 45 度"
-    assert [d["set_name"] for d in page.directions] == ["套A（冷水化开）", "套B（早餐台面）", "套C（蓝杯特写）"]
+    assert [d["set_name"] for d in page.directions] == ["套A（冷水化开）", "套B（早餐台面）", "套C（蓝杯特写）", "套D（窗边下午茶）"]
+    assert unquote(page.directions[3]["img"]).endswith("image-sets/oat-tea-D.png")
     assert unquote(page.directions[2]["img"]).endswith("image-sets/oat-cup-C.png")
     assert page.directions[2]["set"] == {"图集": "套C（蓝杯特写）", "点赞": "900", "收藏": "2100", "合计": "3000",
                                         "借什么": "封面的特写"}
@@ -373,19 +376,19 @@ def test_a_direction_with_an_empty_angle_framing_or_lead_stops_the_build_naming_
     fails(work, plan_text(directions=bad), "封面方向", "方向 B", cell)
 
 
-def test_directions_that_share_angle_framing_and_lead_together_are_not_three_directions_and_stop_the_build(work):
+def test_directions_that_share_angle_framing_and_lead_together_are_not_four_directions_and_stop_the_build(work):
     bad = DIRECTIONS_ROWS.replace("| 斜侧 45 度 | 特写 | 手里的杯子 |", "| 俯拍 | 近景 | 量勺里的粉 |")
     fails(work, plan_text(directions=bad), "封面方向", "方向 C", "方向 A", "角度")
 
 
-def test_fewer_than_three_studied_sets_stop_the_build_instead_of_reusing_or_inventing_a_direction(work):
-    two_sets = "".join(SETS_ROWS.splitlines(keepends=True)[:2])
-    two_directions = "".join(DIRECTIONS_ROWS.splitlines(keepends=True)[:2])
-    fails(work, plan_text(sets=two_sets, directions=two_directions), "研究的图集", "不足三套")
+def test_fewer_than_four_studied_sets_stop_the_build_instead_of_reusing_or_inventing_a_direction(work):
+    three_sets = "".join(SETS_ROWS.splitlines(keepends=True)[:3])
+    three_directions = "".join(DIRECTIONS_ROWS.splitlines(keepends=True)[:3])
+    fails(work, plan_text(sets=three_sets, directions=three_directions), "研究的图集", "不足四套")
 
 
-def test_directions_must_be_exactly_a_b_and_c(work):
-    fails(work, plan_text(directions=DIRECTIONS_ROWS.replace("| C |", "| D |")), "封面方向", "A、B、C")
+def test_directions_must_be_exactly_a_b_c_and_d(work):
+    fails(work, plan_text(directions=DIRECTIONS_ROWS.replace("| D |", "| E |")), "封面方向", "A、B、C、D")
 
 
 # ---- issue 88: the covers page (the three drawn covers side by side) -----------------------------
@@ -398,6 +401,7 @@ class CoversPage(HTMLParser):
         super().__init__()
         self.covers: list[dict] = []
         self.has_covers_block = False
+        self.container: list[str] = []
         self._in_label = False
         self._field = None
         self._buffer = ""
@@ -408,6 +412,7 @@ class CoversPage(HTMLParser):
         classes = (a.get("class") or "").split()
         if "covers" in classes:
             self.has_covers_block = True
+            self.container = classes
         if "cover" in classes:
             self.covers.append({"direction": a.get("data-direction"), "label": "", "img": None, "row": {}})
         if "cover-label" in classes:
@@ -438,16 +443,16 @@ def covers(work: Path, text: str, *extra: str):
                           capture_output=True, text=True, timeout=120)
 
 
-def test_the_covers_page_shows_the_three_covers_side_by_side_labelled_a_b_c_each_with_its_row_as_written(work):
+def test_the_covers_page_shows_the_four_covers_labelled_a_b_c_d_each_with_its_row_as_written(work):
     proc = covers(work, plan_text())
     assert proc.returncode == 0, proc.stdout + proc.stderr
     page_file = work / "封面对比页.html"
     assert str(page_file) in proc.stdout
     page = CoversPage(page_file.read_text(encoding="utf-8"))
     assert page.has_covers_block
-    assert [c["direction"] for c in page.covers] == ["A", "B", "C"]
-    assert [c["label"].strip() for c in page.covers] == ["A", "B", "C"]
-    for cover, letter in zip(page.covers, "ABC"):
+    assert [c["direction"] for c in page.covers] == ["A", "B", "C", "D"]
+    assert [c["label"].strip() for c in page.covers] == ["A", "B", "C", "D"]
+    for cover, letter in zip(page.covers, "ABCD"):
         src = unquote(cover["img"])
         assert src.endswith(f"images/cover-{letter}.png")
         assert not re.match(r"^(/|[A-Za-z]:|file:)", src), src
@@ -459,17 +464,18 @@ def test_the_covers_page_shows_the_three_covers_side_by_side_labelled_a_b_c_each
         "和另外两个怎么不同": "平视对俯拍和斜侧；中景对近景和特写；整个早餐台面领头，另两个是粉和杯子"}
     assert page.covers[0]["row"]["撞上的卡和改法"] == ""
     assert page.covers[2]["row"]["领头"] == "手里的杯子"
+    assert page.covers[3]["row"]["领头"] == "窗边的光"
 
 
 def test_the_covers_page_accepts_other_image_types_and_an_images_folder_and_an_output_path(work):
     (work / "drawn").mkdir()
-    for letter, ext in zip("ABC", ("jpg", "webp", "png")):
+    for letter, ext in zip("ABCD", ("jpg", "webp", "png", "jpeg")):
         (work / "drawn" / f"cover-{letter}.{ext}").write_bytes(PNG)
     out = work / "elsewhere" / "covers.html"
     proc = covers(work, plan_text(), "--images-folder", str(work / "drawn"), "-o", str(out))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     page = CoversPage(out.read_text(encoding="utf-8"))
-    assert [unquote(c["img"]).rsplit(".", 1)[1] for c in page.covers] == ["jpg", "webp", "png"]
+    assert [unquote(c["img"]).rsplit(".", 1)[1] for c in page.covers] == ["jpg", "webp", "png", "jpeg"]
     assert all((out.parent / unquote(c["img"])).resolve().is_file() for c in page.covers)
 
 
@@ -496,6 +502,7 @@ class SetPage(HTMLParser):
         super().__init__()
         self.cards: list[dict] = []
         self.has_set_block = False
+        self.container: list[str] = []
         self._target = None
         self._field = None
         self._buffer = ""
@@ -506,6 +513,7 @@ class SetPage(HTMLParser):
         classes = (a.get("class") or "").split()
         if "set" in classes:
             self.has_set_block = True
+            self.container = classes
         if "set-card" in classes:
             self.cards.append({"card": a.get("data-card"), "label": "", "img": None, "row": {}, "not_passing": False,
                                "honest": []})
@@ -640,7 +648,8 @@ def test_the_video_storyboard_command_is_untouched():
 def test_each_direction_memory_point_appears_on_the_plan_page_exactly_as_written(work):
     page = ok(work, plan_text(), "--sets-folder", str(work / "image-sets"))
     assert [d["row"]["记忆点"] for d in page.directions] == [
-        "一勺粉倒进水里就化开，记住“不用搅”", "满桌早餐里一杯清水，记住“早上顺手就能喝”", "一只握着的蓝杯，记住“随身带着喝”"]
+        "一勺粉倒进水里就化开，记住“不用搅”", "满桌早餐里一杯清水，记住“早上顺手就能喝”", "一只握着的蓝杯，记住“随身带着喝”",
+        "一扇窗和一只杯子，记住“下午也能喝”"]
 
 
 def test_a_direction_with_an_empty_memory_point_stops_the_build_naming_the_row(work):
@@ -664,7 +673,8 @@ def test_the_axes_line_and_each_kept_directions_how_it_differs_line_are_on_the_p
     assert [d["row"]["和另外两个怎么不同"] for d in page.directions] == [
         "俯拍对平视和斜侧；近景对中景和特写；量勺里的粉领头，另两个是桌面和杯子",
         "平视对俯拍和斜侧；中景对近景和特写；整个早餐台面领头，另两个是粉和杯子",
-        "斜侧 45 度对俯拍和平视；特写对近景和中景；手里的杯子领头，另两个是粉和桌面"]
+        "斜侧 45 度对俯拍和平视；特写对近景和中景；手里的杯子领头，另两个是粉和桌面",
+        "仰拍对俯拍、平视和斜侧；远景对近景、中景和特写；窗边的光领头，另三个是粉、桌面和杯子"]
 
 
 def test_a_plan_without_the_axes_line_stops_the_build(work):
@@ -685,11 +695,11 @@ def test_an_empty_how_it_differs_line_stops_the_build_naming_the_row(work):
 
 def test_a_mixed_row_does_not_appear_on_the_plan_page_and_does_not_break_the_build(work):
     page = ok(work, plan_text(directions=DIRECTIONS_ROWS + MIX_ROW), "--sets-folder", str(work / "image-sets"))
-    assert [d["direction"] for d in page.directions] == ["A", "B", "C"]
+    assert [d["direction"] for d in page.directions] == ["A", "B", "C", "D"]
 
 
-def test_a_row_after_c_that_is_not_a_mix_of_the_letters_stops_the_build(work):
-    fails(work, plan_text(directions=DIRECTIONS_ROWS + MIX_ROW.replace("A+C", "D")), "封面方向", "混合", "D")
+def test_a_row_after_d_that_is_not_a_mix_of_the_letters_stops_the_build(work):
+    fails(work, plan_text(directions=DIRECTIONS_ROWS + MIX_ROW.replace("A+C", "E")), "封面方向", "混合", "E")
 
 
 def test_a_mixed_row_naming_a_set_that_is_not_studied_stops_the_build_naming_the_row(work):
@@ -703,11 +713,11 @@ def mixed(work):
     return work
 
 
-def test_the_plain_covers_page_still_shows_a_b_c_only_when_the_plan_has_a_mixed_row(mixed):
+def test_the_plain_covers_page_still_shows_a_b_c_d_only_when_the_plan_has_a_mixed_row(mixed):
     proc = covers(mixed, plan_text(directions=DIRECTIONS_ROWS + MIX_ROW))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     page = CoversPage((mixed / "封面对比页.html").read_text(encoding="utf-8"))
-    assert [c["direction"] for c in page.covers] == ["A", "B", "C"]
+    assert [c["direction"] for c in page.covers] == ["A", "B", "C", "D"]
 
 
 def test_covers_mix_shows_the_mixed_cover_alone_with_its_row_unchanged(mixed):
@@ -724,7 +734,7 @@ def test_covers_mix_shows_the_mixed_cover_alone_with_its_row_unchanged(mixed):
         "撞上的卡和改法": "", "记忆点": "一只握着的杯子在俯拍里，记住“握杯就化开”", "和另外两个怎么不同": MIX_DIFFERS}
 
 
-@pytest.mark.parametrize("label", ["B", "A+B", "A"])
+@pytest.mark.parametrize("label", ["B", "D", "A+B", "A"])
 def test_covers_mix_with_a_plain_letter_or_a_label_not_in_the_table_stops_with_exit_2(mixed, label):
     proc = covers(mixed, plan_text(directions=DIRECTIONS_ROWS + MIX_ROW), "--mix", label)
     assert proc.returncode == 2 and label in proc.stderr
@@ -904,3 +914,47 @@ def test_a_plan_naming_the_creation_guide_before_its_first_section_builds_and_th
     ok(work, text, "--sets-folder", str(work / "image-sets"))
     html = (work / "计划页-审批稿.html").read_text(encoding="utf-8")
     assert guide in html
+
+
+# ---- issue 140: every pick is a two-by-two grid by default, one row on request (the set of five or more cards is always one row)
+
+
+def more_cards(count: int) -> str:
+    extra = "".join(CARDS_ROWS.splitlines(keepends=True)[1].replace("| 2 |", f"| {n} |", 1)
+                    for n in range(3, count + 1))
+    return CARDS_ROWS + extra
+
+
+def draw(work: Path, count: int) -> None:
+    for n in range(1, count + 1):
+        (work / "images" / f"card-{n}.png").write_bytes(PNG)
+
+
+def test_the_covers_page_is_a_two_by_two_grid_by_default_and_one_row_with_the_row_flag(work):
+    assert covers(work, plan_text()).returncode == 0
+    grid = CoversPage((work / "封面对比页.html").read_text(encoding="utf-8"))
+    assert "grid" in grid.container and "row" not in grid.container
+    assert covers(work, plan_text(), "--row").returncode == 0
+    row = CoversPage((work / "封面对比页.html").read_text(encoding="utf-8"))
+    assert "row" in row.container and "grid" not in row.container
+    assert [c["direction"] for c in row.covers] == [c["direction"] for c in grid.covers] == ["A", "B", "C", "D"]
+
+
+def test_a_card_set_of_four_or_fewer_is_a_grid_by_default_and_one_row_with_the_row_flag(work):
+    draw(work, 4)
+    assert setpage(work, plan_text(cards=more_cards(4))).returncode == 0
+    grid = SetPage((work / "整套并排页.html").read_text(encoding="utf-8"))
+    assert [c["card"] for c in grid.cards] == ["1", "2", "3", "4"]
+    assert "grid" in grid.container and "row" not in grid.container
+    assert setpage(work, plan_text(cards=more_cards(4)), "--row").returncode == 0
+    row = SetPage((work / "整套并排页.html").read_text(encoding="utf-8"))
+    assert "row" in row.container and "grid" not in row.container
+
+
+@pytest.mark.parametrize("flags", [(), ("--row",)])
+def test_a_finished_set_of_five_or_more_cards_is_always_one_row_and_the_flag_changes_nothing(work, flags):
+    draw(work, 5)
+    assert setpage(work, plan_text(cards=more_cards(5)), *flags).returncode == 0
+    page = SetPage((work / "整套并排页.html").read_text(encoding="utf-8"))
+    assert [c["card"] for c in page.cards] == ["1", "2", "3", "4", "5"]
+    assert "row" in page.container and "grid" not in page.container
