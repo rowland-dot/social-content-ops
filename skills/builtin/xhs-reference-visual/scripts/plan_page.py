@@ -13,24 +13,27 @@ change.
 The page marks its parts with classes (the tests read them): each card is an element of class `card` (data-card = the
 card) holding its plan cells (a span of class `v` with data-field) and a `figure.studied` with the studied set's image
 (`img.set-image`) and that set's row; each colour row is a `div.colour-row` with a `span.swatch` (data-hex); each icon
-is a `div.icon-row`; `p.no-icons` carries the line 这套不用图标. Issue 88 adds the three cover directions: each is an
-`article.direction` (data-direction = A, B or C) holding the table row's cells and a `figure.dir-set` with its studied
-set's image (`img.dir-image`) and that set's row. The covers page (the `covers` command) is a `div.covers` holding one
-`article.cover` per direction: the drawn cover (`img.cover-image`), its label (`h3.cover-label`) and the direction's row
-(`div.dir-row`), copied unchanged.
+is a `div.icon-row`; `p.no-icons` carries the line 这套不用图标. Issue 88 adds the cover directions (four since issue 140:
+every pick offers four options): each is an `article.direction` (data-direction = A, B, C or D) holding the table row's
+cells and a `figure.dir-set` with its studied set's image (`img.dir-image`) and that set's row. The covers page (the
+`covers` command) is a `div.covers` holding one `article.cover` per direction: the drawn cover (`img.cover-image`), its
+label (`h3.cover-label`) and the direction's row (`div.dir-row`), copied unchanged.
 The set page (the `set` command, issue 90) shows the drawn set side by side for the user's one look: a `div.set` holding
 one `article.set-card` per row of the 逐张计划 table in plan order (cover first), each with `h3.set-label`, the drawn card
 (`img.card-image`), the whole plan row (`div.plan-row`) and, when the card's check file has 如实 lines, `span.not-passing`
 and one `p.honest` per line, copied unchanged.
+Layout (issue 140): the container of the covers page and of the set page carries a second class, `grid` (a two-by-two
+田字格, the default, easy to read on a phone) or `row` (one row left to right, for the owner's PC, asked for with --row).
+A set page of five cards or more is always `row`; --row changes nothing there.
 
 Usage:
     plan_page.py build  --plan <set-plan.md> [--sets-folder <folder of studied-set images>] [-o <page.html>]
-    plan_page.py covers --plan <set-plan.md> [--images-folder <folder of cover-A/B/C images>] [--mix <A+C>] [-o <page.html>]
-    plan_page.py set    --plan <set-plan.md> [--images-folder <folder of card-<卡> images>] [--checks-folder <folder of card-<卡>.md>] [-o <page.html>]
+    plan_page.py covers --plan <set-plan.md> [--images-folder <folder of cover-A/B/C/D images>] [--mix <A+C>] [--row] [-o <page.html>]
+    plan_page.py set    --plan <set-plan.md> [--images-folder <folder of card-<卡> images>] [--checks-folder <folder of card-<卡>.md>] [--row] [-o <page.html>]
 
 Defaults: the studied-set images are in `image-sets/` beside the plan (pass the brand's own image-sets folder as
 --sets-folder), and the page is saved beside the plan, so the image paths on the page are relative and the folder
-opens on its own. The covers are `cover-A`, `cover-B`, `cover-C` (png, jpg, jpeg or webp) in `images/` beside the plan.
+opens on its own. The covers are `cover-A`, `cover-B`, `cover-C`, `cover-D` (png, jpg, jpeg or webp) in `images/` beside the plan.
 Exit code 0 on success, 2 for bad input; nothing is written then.
 """
 from __future__ import annotations
@@ -61,10 +64,12 @@ DEFAULT_CHECKS_FOLDER = "checks"
 NOT_PASSING = "未通过检查"
 DEFAULT_IMAGES_FOLDER = "images"
 COVER_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
-DIRECTION_LETTERS = ["A", "B", "C"]
-AXES = ("角度", "取景", "领头")  # the owner's three axes, CLAUDE.md photo-scene step 4
+DIRECTION_LETTERS = ["A", "B", "C", "D"]  # every pick offers four options (issue 140)
+LETTER_LIST = "、".join(DIRECTION_LETTERS)
+AXES = ("角度", "取景", "领头")  # the owner's three axes, CLAUDE.md photo-scene step 4 (axes, not choices)
 AXES_PREFIX = "三个轴："
-MIX_LABEL = re.compile(r"[ABC](\+[ABC])+")
+MIX_LABEL = re.compile(r"[ABCD](\+[ABCD])+")
+LONG_SET = 5  # a finished set of this many cards or more is always one row (issue 140)
 MUST_FILL = ("借的图集", "角度", "取景", "领头", "记忆点", "和另外两个怎么不同")  # 撞上的卡和改法 may be empty: most directions collide with nothing
 DEFAULT_SETS_FOLDER = "image-sets"
 HEX = re.compile(r"#[0-9A-Fa-f]{6}(?![0-9A-Fa-f])")
@@ -93,16 +98,17 @@ def rows_of(name: str, found: list[tuple[str, list[str]]]) -> list[dict[str, str
 
 
 def check_directions(directions: list[dict[str, str]], sets: dict) -> None:
-    """A, B and C first, each on a different studied set and differing from the others on every axis; any rows after
-    them are mixed picks (issues 88, 99)."""
-    if len(sets) < len(DIRECTION_LETTERS):
-        _die(f"「研究的图集」只有 {len(sets)} 套，不足三套：A/B/C 三个封面要借三套不同的图集，不重用一套，也不凭空编方向。{LAYOUT_HINT}")
-    kept, mixed = directions[:3], directions[3:]
+    """A, B, C and D first, each on a different studied set and differing from the others on every axis; any rows after
+    them are mixed picks (issues 88, 99, 140)."""
+    count = len(DIRECTION_LETTERS)
+    if len(sets) < count:
+        _die(f"「研究的图集」只有 {len(sets)} 套，不足四套：{LETTER_LIST} 四个封面要借四套不同的图集，不重用一套，也不凭空编方向。{LAYOUT_HINT}")
+    kept, mixed = directions[:count], directions[count:]
     if [r["方向"] for r in kept] != DIRECTION_LETTERS:
-        _die(f"「封面方向」的方向一格应依次为 A、B、C，实际是 {'、'.join(r['方向'] for r in kept)}。{LAYOUT_HINT}")
+        _die(f"「封面方向」的方向一格应依次为 {LETTER_LIST}，实际是 {'、'.join(r['方向'] for r in kept)}。{LAYOUT_HINT}")
     for row in mixed:
         if not MIX_LABEL.fullmatch(row["方向"]):
-            _die(f"「封面方向」方向 {row['方向']}：A、B、C 之后的行只能是混合选择，方向一格写 A+C 这样的字母组合。{LAYOUT_HINT}")
+            _die(f"「封面方向」方向 {row['方向']}：{LETTER_LIST} 之后的行只能是混合选择，方向一格写 A+C 这样的字母组合。{LAYOUT_HINT}")
     for row in directions:
         where = f"「封面方向」方向 {row['方向']}"
         for column in MUST_FILL:
@@ -114,10 +120,10 @@ def check_directions(directions: list[dict[str, str]], sets: dict) -> None:
     for i, row in enumerate(kept):
         for other in kept[:i]:
             if row["借的图集"] == other["借的图集"]:
-                _die(f"「封面方向」方向 {row['方向']}：和方向 {other['方向']} 借了同一个图集「{row['借的图集']}」，三个方向要借三套不同的图集")
+                _die(f"「封面方向」方向 {row['方向']}：和方向 {other['方向']} 借了同一个图集「{row['借的图集']}」，四个方向要借四套不同的图集")
             for axis in AXES:
                 if row[axis] == other[axis]:
-                    _die(f"「封面方向」方向 {row['方向']}：和方向 {other['方向']} 的{axis}一样（{row[axis]}），三个方向的角度、取景和领头要各自都不同")
+                    _die(f"「封面方向」方向 {row['方向']}：和方向 {other['方向']} 的{axis}一样（{row[axis]}），四个方向的角度、取景和领头要各自都不同")
 
 
 def axes_line(text: str) -> str:
@@ -156,6 +162,11 @@ def read_plan(text: str, sets_folder: Path) -> dict:
         if len(HEX.findall(row["颜色"])) != 1:
             _die(f"「颜色和层级」层级 {row['层级']}：颜色一格没有有效的十六进制值（写成「颜色名 #RRGGBB」）：{row['颜色']}")
     return {**sections, "sets": sets}
+
+
+def layout_class(row: bool) -> str:
+    """The container's layout class: a two-by-two grid (田字格, phone-friendly) by default, one row left to right on request."""
+    return "row" if row else "grid"
 
 
 def e(text: str) -> str:
@@ -207,8 +218,8 @@ h1{font-size:28px;margin:0 0 18px}h2{font-size:22px;margin:32px 0 12px}h3{margin
 p.cell{margin:6px 0;font-size:16px;line-height:1.65}.k{display:inline-block;min-width:5.6em;color:#8a7f70;font-size:13px}
 .direction{display:flex;gap:20px;padding:16px;background:#fff;border-bottom:1px solid #e6dfd3}
 .direction .plan{flex:1;min-width:0}.direction .dir-set{flex:0 0 300px;margin:0}.direction .dir-set img{width:100%;border-radius:6px;display:block}
-.set{display:flex;gap:12px;align-items:flex-start;overflow-x:auto}.set-card{flex:0 0 260px;background:#fff;padding:12px;border-radius:8px}.set-card img{width:100%;border-radius:6px;display:block}.set-label{font-size:28px;margin:0 0 8px}.not-passing{display:inline-block;background:#b3261e;color:#fff;border-radius:4px;padding:2px 8px;margin-top:8px}.honest{color:#b3261e}
-.covers{display:flex;gap:16px;align-items:flex-start}.cover{flex:1;min-width:0;background:#fff;padding:12px;border-radius:8px}
+.set{gap:12px;align-items:flex-start}.set.row{display:flex;overflow-x:auto}.set.row .set-card{flex:0 0 260px}.set.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.set-card{background:#fff;padding:12px;border-radius:8px}.set-card img{width:100%;border-radius:6px;display:block}.set-label{font-size:28px;margin:0 0 8px}.not-passing{display:inline-block;background:#b3261e;color:#fff;border-radius:4px;padding:2px 8px;margin-top:8px}.honest{color:#b3261e}
+.covers{gap:16px;align-items:flex-start}.covers.row{display:flex}.covers.row .cover{flex:1}.covers.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.cover{min-width:0;background:#fff;padding:12px;border-radius:8px}
 .cover img{width:100%;border-radius:6px;display:block}.cover-label{font-size:32px;margin:0 0 8px}
 .colour-row{display:flex;gap:14px;align-items:flex-start;padding:10px 16px;background:#fff;border-bottom:1px solid #e6dfd3}
 .swatch{flex:0 0 44px;height:44px;border-radius:8px;border:1px solid rgba(0,0,0,.2)}
@@ -216,7 +227,7 @@ p.cell{margin:6px 0;font-size:16px;line-height:1.65}.k{display:inline-block;min-
 .menu{position:sticky;top:0;display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;background:#FBF8F3}.menu a{padding:4px 10px;background:#fff;border-radius:6px;border:1px solid #e6dfd3;color:#25292B;text-decoration:none;font-size:14px}
 .lead{font-size:16px;line-height:1.65}.file-box{margin:24px 0;padding:8px 20px 16px;background:#fff;border:1px solid #e6dfd3;border-radius:10px}.file-label{font-size:16px;color:#8a7f70;margin:8px 0}
 p.line,p.axes{margin:6px 0;font-size:16px;line-height:1.65;white-space:pre-wrap}h3.heading{margin:20px 0 6px}.named{margin:8px 0}.named img{max-width:100%;border-radius:6px;display:block}
-@media(max-width:640px){.card,.direction{flex-direction:column}.card .studied,.direction .dir-set{flex:none}.covers{flex-direction:column}}
+@media(max-width:640px){.card,.direction{flex-direction:column}.card .studied,.direction .dir-set{flex:none}.covers.row{flex-direction:column}}
 """
 
 
@@ -338,7 +349,7 @@ def build_page(plan: Path, sets_folder: Path, page: Path) -> str:
     title = next((m.group(1) for m in re.finditer(r"^#\s+(.*?)\s*$", text, re.M)), plan.parent.name)
     found = tables(text)
     structured: dict[str, str] = {}
-    for row, raw in zip(data["封面方向"][:3], raw_rows(found, "封面方向")):
+    for row, raw in zip(data["封面方向"][:len(DIRECTION_LETTERS)], raw_rows(found, "封面方向")):
         structured[raw.rstrip()] = direction_article(row, data["sets"], sets_folder, page.parent, raw.rstrip())
     for row, raw in zip(data["逐张计划"], raw_rows(found, "逐张计划")):
         structured[raw.rstrip()] = card_article(row, data["sets"], sets_folder, page.parent, raw.rstrip())
@@ -371,7 +382,7 @@ def cover_file(images: Path, letter: str) -> Path:
     return found[0]
 
 
-def build_covers_page(plan: Path, images: Path, page: Path, mix: str | None = None) -> str:
+def build_covers_page(plan: Path, images: Path, page: Path, mix: str | None = None, one_row: bool = False) -> str:
     text = plan.read_text(encoding="utf-8")
     found = tables(text)
     sections = {name: rows_of(name, found) for name in ("研究的图集", "封面方向")}
@@ -381,11 +392,11 @@ def build_covers_page(plan: Path, images: Path, page: Path, mix: str | None = No
     sets = {r["图集"]: r for r in sections["研究的图集"]}
     check_directions(sections["封面方向"], sets)
     title = next((m.group(1) for m in re.finditer(r"^#\s+(.*?)\s*$", text, re.M)), plan.parent.name)
-    shown = sections["封面方向"][:3]
+    shown = sections["封面方向"][:len(DIRECTION_LETTERS)]
     if mix:
-        shown = [r for r in sections["封面方向"][3:] if r["方向"] == mix]
+        shown = [r for r in sections["封面方向"][len(DIRECTION_LETTERS):] if r["方向"] == mix]
         if not shown:
-            _die(f"--mix {mix}：「封面方向」表里没有这个混合选择的行（A、B、C 本身不是混合选择）。{LAYOUT_HINT}")
+            _die(f"--mix {mix}：「封面方向」表里没有这个混合选择的行（{LETTER_LIST} 本身不是混合选择）。{LAYOUT_HINT}")
     articles = []
     for row in shown:
         path = os.path.relpath(cover_file(images, row["方向"]), page.parent).replace(os.sep, "/")
@@ -396,7 +407,7 @@ def build_covers_page(plan: Path, images: Path, page: Path, mix: str | None = No
         '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>{e(title)}</title><style>{STYLE}</style></head><body><div class="wrap"><h1>{e(title)}</h1>\n'
-        f'<h2>封面方向</h2>\n<p class="axes">{e(axes_line(text))}</p>\n<div class="covers">\n' + "\n".join(articles) + '\n</div>\n</div></body></html>\n')
+        f'<h2>封面方向</h2>\n<p class="axes">{e(axes_line(text))}</p>\n<div class="covers {layout_class(one_row)}">\n' + "\n".join(articles) + '\n</div>\n</div></body></html>\n')
 
 
 def honest_lines(check: Path) -> list[str]:
@@ -419,7 +430,7 @@ def card_image(images: Path, card: str) -> Path:
     return found[0]
 
 
-def build_set_page(plan: Path, images: Path, checks: Path, page: Path) -> str:
+def build_set_page(plan: Path, images: Path, checks: Path, page: Path, one_row: bool = False) -> str:
     text = plan.read_text(encoding="utf-8")
     rows = rows_of("逐张计划", tables(text))
     if rows is None:
@@ -438,7 +449,7 @@ def build_set_page(plan: Path, images: Path, checks: Path, page: Path) -> str:
         '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>{e(title)}</title><style>{STYLE}</style></head><body><div class="wrap"><h1>{e(title)}</h1>\n'
-        '<h2>整套并排</h2>\n<div class="set">\n' + "\n".join(articles) + '\n</div>\n</div></body></html>\n')
+        f'<h2>整套并排</h2>\n<div class="set {layout_class(one_row or len(rows) >= LONG_SET)}">\n' + "\n".join(articles) + '\n</div>\n</div></body></html>\n')
 
 
 def cmd_set(a) -> int:
@@ -448,7 +459,7 @@ def cmd_set(a) -> int:
     images = Path(a.images_folder) if a.images_folder else plan.parent / DEFAULT_IMAGES_FOLDER
     checks = Path(a.checks_folder) if a.checks_folder else plan.parent / DEFAULT_CHECKS_FOLDER
     page = Path(a.output) if a.output else plan.parent / SET_PAGE_NAME
-    content = build_set_page(plan, images, checks, page)
+    content = build_set_page(plan, images, checks, page, a.row)
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(content, encoding="utf-8")
     print(f"OK: {page}")
@@ -461,7 +472,7 @@ def cmd_covers(a) -> int:
         _die(f"plan not found: {plan}")
     images = Path(a.images_folder) if a.images_folder else plan.parent / DEFAULT_IMAGES_FOLDER
     page = Path(a.output) if a.output else plan.parent / COVERS_PAGE_NAME
-    content = build_covers_page(plan, images, page, a.mix)
+    content = build_covers_page(plan, images, page, a.mix, a.row)
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(content, encoding="utf-8")
     print(f"OK: {page}")
@@ -489,14 +500,16 @@ def main() -> int:
     p.add_argument("--sets-folder", help="the folder of studied-set images (default: image-sets/ beside the plan)")
     p.add_argument("-o", "--output", help="the page to write (default: beside the plan)")
     p.set_defaults(func=cmd_build)
-    c = sub.add_parser("covers", help="build the page that shows the three drawn covers side by side")
+    c = sub.add_parser("covers", help="build the page that shows the four drawn covers (a two-by-two grid by default)")
     c.add_argument("--plan", required=True, help="the post's set-plan.md")
-    c.add_argument("--images-folder", help="the folder of cover-A/B/C images (default: images/ beside the plan)")
+    c.add_argument("--images-folder", help="the folder of cover-A/B/C/D images (default: images/ beside the plan)")
+    c.add_argument("--row", action="store_true", help="lay the covers out in one row, left to right (for the owner's PC)")
     c.add_argument("-o", "--output", help="the page to write (default: beside the plan)")
     c.add_argument("--mix", help="show only the mixed cover of this row of the directions table (for example A+C)")
     c.set_defaults(func=cmd_covers)
-    t = sub.add_parser("set", help="build the page that shows the whole drawn set side by side")
+    t = sub.add_parser("set", help="build the page that shows the whole drawn set (a grid for four cards or fewer, one row for five or more)")
     t.add_argument("--plan", required=True, help="the post's set-plan.md")
+    t.add_argument("--row", action="store_true", help="lay four cards or fewer out in one row (a set of five or more is always one row)")
     t.add_argument("--images-folder", help="the folder of card-<卡> images (default: images/ beside the plan)")
     t.add_argument("--checks-folder", help="the folder of card-<卡>.md check files (default: checks/ beside the plan)")
     t.add_argument("-o", "--output", help="the page to write (default: beside the plan)")

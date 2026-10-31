@@ -19,9 +19,10 @@ SKILL.md 只留步骤和这条规则，细则都在这里。
 
 整套检查之后，先跑 `approvals.py check`（[photo-scene-approvals.md](photo-scene-approvals.md)），再建一张页给用户看：
 
-`python3 skills/builtin/xhs-reference-visual/scripts/plan_page.py set --plan <set-plan.md> [--images-folder <卡图所在文件夹>] [--checks-folder <检查文件所在文件夹>] [-o <页面.html>]`
+`python3 skills/builtin/xhs-reference-visual/scripts/plan_page.py set --plan <set-plan.md> [--images-folder <卡图所在文件夹>] [--checks-folder <检查文件所在文件夹>] [--row] [-o <页面.html>]`
 
 - 页面默认存在这篇帖子的照片场景文件夹里（`outputs/` 下），套系计划旁边，叫 `整套并排页.html`，图片用相对路径。卡图默认在计划旁的 `images/`，每张叫 `card-<卡>.png`（或 jpg、jpeg、webp），检查文件默认在计划旁的 `checks/`。
+- 排法（issue 140）：整套成品四张或更少时，默认排成田字格（两行两列），手机上好看，负责人要在电脑上看时加 `--row` 排成一行，从左到右；整套成品五张或更多时一律排成一行，这是唯一的例外，`--row` 在这里不改变什么。容器的类名是 `set grid` 或 `set row`。
 - 页面按计划里的卡的顺序并排放出每一张卡，封面在最前，每张标上卡名，旁边是计划里它那一行，原样照抄，读者的问题也在内。命令只加固定的标题和标签，不改字。
 - 检查文件的 `## 如实` 里有内容的卡，页面上标“未通过检查”，并把那几行原样列在下面。
 - 退出码 0 是成功，命令打印 `OK: <页面位置>`；退出码 2 是输入有问题，什么也不写：计划里的某张卡在磁盘上没有图（或有两张）时，报错点出这张卡的名字，不猜、不跳过。

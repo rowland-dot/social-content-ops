@@ -187,7 +187,7 @@ def test_wrapper_makes_the_playbook_rules_hold_in_easel():
     for needle in (
         "逐字清单",           # every on-image word confirmed before generating
         "问题工具",           # ... through the question tool
-        "先画三个封面",       # three cover versions before a set (issue 88; this was 先做一张小样)
+        "先画四个封面",       # four cover versions before a set (issues 88 and 140; this was 先做一张小样)
         "逐字核对",           # actual image checked word by word
         "实际像素",           # real pixel size read from the file
         "1086×1448",          # what Codex returns for 3:4
@@ -1482,7 +1482,7 @@ def test_issue_117_wording_never_asks_the_pack_text_to_face_the_camera_or_be_leg
 # cover-directions table (fixed in references/photo-scene-plan-page.md); the covers procedure is in
 # references/photo-scene-cover-versions.md because SKILL.md is at its 200-line limit. The command's own test is
 # tests/test_xhs_plan_page.py. Same assertions as wrapper.test.py beside the skill.
-COVERS_START = "**先画三个封面 A/B/C（issue 88）**"
+COVERS_START = "**先画四个封面 A/B/C/D（issue 88、140）**"
 COVERS_REF = SKILL_DIR / "references" / "photo-scene-cover-versions.md"
 RO_STEP_4 = (
     "")
@@ -1498,13 +1498,13 @@ ISSUE_88_SKILL = {
     "ros_step_4_rule_and_quote_word_for_word": [
         "Photo-scene post images follow one approval process", "第 4 步", RO_STEP_4, RO_QUOTE_88],
     "three_covers_each_from_a_different_studied_set_differing_in_angle_framing_or_lead": [
-        "三个封面", "A、B、C", "各借不同的一套研究过的图集", "角度、取景或照片领头的东西不同"],
+        "四个封面", "A、B、C、D", "各借不同的一套研究过的图集", "角度、取景或照片领头的东西不同"],
     "drawn_after_the_plan_page_approval_without_asking_again_one_at_a_time": [
         "计划页得到用户批准之后", "不再另问", "一次一张"],
     "shown_side_by_side_on_a_page_built_by_the_command_never_by_hand": [
         "plan_page.py covers", "并排", "从不手写"],
     "no_other_card_is_drawn_before_the_pick": ["用户选定之前", "其他任何一张卡都不画", "然后停下"],
-    "fewer_than_three_studied_sets_means_tell_the_user_and_stop": ["不足三套", "如实告诉用户", "不重用一套"],
+    "fewer_than_four_studied_sets_means_tell_the_user_and_stop": ["不足四套", "如实告诉用户", "不重用一套"],
     "the_detail_is_in_the_reference_file": ["references/photo-scene-cover-versions.md"],
     "ros_rule_overrides_the_team_packages_one_sample_lines_naming_each": [
         "以负责人的规则为准", "PLAYBOOK.md:17-18", "PLAYBOOK.md:26", "STANDARD.md:36", "先做小样",
@@ -1515,8 +1515,8 @@ ISSUE_88_REF = {
     "three_directions_in_the_set_plan_each_with_its_own_layout_plan": [
         "封面方向表", "photo-scene-plan-page.md", "每个方向各有一份版面计划", "画任何一张之前"],
     "real_differences_only": [
-        "三个方向借三套不同的图集", "角度、取景和领头每一样都不同", "换个颜色或裁小一点不是不同的方向"],
-    "fewer_than_three_studied_sets_stop": ["不足三套", "不重用一套", "不凭空编方向"],
+        "四个方向借四套不同的图集", "角度、取景和领头每一样都不同", "换个颜色或裁小一点不是不同的方向"],
+    "fewer_than_four_studied_sets_stop": ["不足四套", "不重用一套", "不凭空编方向"],
     "a_direction_names_the_later_card_it_collides_with_and_how_that_card_changes": [
         "撞上的卡和改法", "选哪个方向，那张卡就怎么改", "不再另问"],
     "the_plan_page_approval_releases_the_three_draws": ["计划页的批准", "不再问第二次", "耗负责人的 ChatGPT 额度"],
@@ -1525,11 +1525,11 @@ ISSUE_88_REF = {
     "covers_page_built_by_the_command_with_arguments_and_exit_codes": [
         "python3 skills/builtin/xhs-reference-visual/scripts/plan_page.py covers --plan", "--images-folder", "-o",
         "cover-A", "封面对比页.html", "退出码 0", "退出码 2", "什么也不写"],
-    "covers_page_has_the_three_covers_side_by_side_labelled_with_each_row_unchanged": [
-        "并排", "标着 A、B、C", "逐字复制", "相对路径"],
+    "covers_page_has_the_four_covers_labelled_with_each_row_unchanged": [
+        "并排", "标着 A、B、C、D", "逐字复制", "相对路径"],
     "no_other_card_before_the_pick": ["用户选定之前", "其他任何一张卡都不画"],
     "after_the_pick_it_is_the_sets_cover_recorded_with_its_date_and_the_others_are_marked": [
-        "选定的封面就是这套的封面", "他选中的封面", "记入批准记录", "没选的两张留在磁盘上", "标明没选"],
+        "选定的封面就是这套的封面", "他选中的封面", "记入批准记录", "没选的三张留在磁盘上", "标明没选"],
     "pack_wording_stays_out": ["不读、不列、不报包装上印的字"],
     "out_of_scope_stays_with_its_own_issues": ["issue 99", "issue 89", "issue 90"],
 }
@@ -1570,7 +1570,7 @@ def test_the_cover_versions_reference_requires_the_issue_88_behaviours(behaviour
 
 def test_the_plan_page_reference_fixes_the_cover_directions_table_with_its_rules():
     text = _text(PLAN_PAGE_REF)
-    for need in ("## 封面方向", "| 方向 | 借的图集 | 角度 | 取景 | 领头 | 撞上的卡和改法 |", "A、B、C", "不足三套",
+    for need in ("## 封面方向", "| 方向 | 借的图集 | 角度 | 取景 | 领头 | 撞上的卡和改法 |", "A、B、C、D", "不足四套",
                  "同一个图集", "角度、取景和领头"):
         assert need in text, f"the plan-page reference does not say: {need}"
 
@@ -1723,7 +1723,7 @@ ISSUE_121_REF = {
         "选项 A 是选定封面自带的字", "封面对比里给用户看的样子"],
     "the original at the styling pick is the lettering as picked in the typeface step": ["选项 A 是上一步选定的字"],
     "the original is not redrawn and not counted in the hand-drawn drawings asked about": ["不重画", "不算在手绘的张数里"],
-    "the covers are shown carrying the plan's lettering": ["三个封面都带计划里的字", "手绘的封面自带它的字"],
+    "the covers are shown carrying the plan's lettering": ["四个封面都带计划里的字", "手绘的封面自带它的字"],
     "picking the original at both steps leaves the cover as it is": ["两步都选原版", "封面的字原样不动", "typed-styling.json"],
 }
 ISSUE_121_COVERS = ["原版加三个新的", "手绘的封面自带它的字"]
@@ -2140,9 +2140,9 @@ ISSUE_99 = {
     "a candidate that differs only by colour, background colour, pose, a small crop or a style label is dropped with a line": (
         SCREEN_FILE, ["只差在颜色、背景色、姿势、小幅裁切或风格标签", "丢掉", "写一行", "太像"]),
     "three kept from three different sets, every pair differing on angle, framing and lead, each with its how-it-differs line": (
-        SCREEN_FILE, ["三个不同的图集", "两两", "角度、取景和领头三样都不同", "和另外两个怎么不同"]),
+        SCREEN_FILE, ["四个不同的图集", "两两", "角度、取景和领头三样都不同", "和另外两个怎么不同"]),
     "the stop when it cannot be met, the rule not relaxed": (
-        SCREEN_FILE, ["不足三套", "凑不出三个", "告诉用户，然后停下", "不放宽"]),
+        SCREEN_FILE, ["不足四套", "凑不出四个", "告诉用户，然后停下", "不放宽"]),
     "a mixed pick is written as one new row and drawn once": (
         SCREEN_FILE, ["混合选择", "一行新的方向", "A+C", "取自哪一个", "记下日期", "只画一次", "--mix"]),
     "the picked covers are never joined, overlaid, cut together or used as the image to edit": (
@@ -2299,7 +2299,7 @@ def _issue_103_failures() -> list[str]:
     LEAK_REF = SKILL_DIR / "references" / "photo-scene-leak-check.md"
     LEAK_REF_NEEDS = {
         "the six fail signs": ["学过的帖子或团队参考图里的品牌名、Logo、商品或包装", "学过的帖子或参考图里的功效、评分、前后对比", "学过的帖子或参考图里的人物、脸或角色",
-                               "徽章、贴纸、口味标或照搬整个版面", "A/B/C 对比页上的标签、方向说明", "上一张卡或作为风格参考传入的封面上的字"],
+                               "徽章、贴纸、口味标或照搬整个版面", "A/B/C/D 对比页上的标签、方向说明", "上一张卡或作为风格参考传入的封面上的字"],
         "the comparison": ["提示词文件里记录的每一张传入的图", "上一张画好的卡", "并排"],
         "the four not-a-leak cases": ["--identity-image", "--base-image", "这张卡自己确认过的字", "替换模式"],
         "the board is never an input": ["对比页", "拼在一起的图", "从不传给 Codex", "选定封面自己的文件"],
@@ -2353,7 +2353,7 @@ def _issue_104_failures() -> list[str]:
     ORDER_REF = SKILL_DIR / "references" / "photo-scene-check-order.md"
     MARGIN_REF = SKILL_DIR / "references" / "photo-scene-safe-margin.md"
     MARGIN_NEEDS = {
-        "the margin, per side and per axis": ["左右各留宽度的 5%", "上下各留高度的 5%", "1086×1448", "54 px", "72 px", "A/B/C 封面", "小样", "已批准卡的修改"],
+        "the margin, per side and per axis": ["左右各留宽度的 5%", "上下各留高度的 5%", "1086×1448", "54 px", "72 px", "A/B/C/D 封面", "小样", "已批准卡的修改"],
         "the layout plan places whole blocks": ["整块字的范围（描边和阴影都算在内）", "不只是中心点"],
         "the prompt rule": ["主体、手绘的字和涂鸦都留在边距里面", "打字字的区域（issue 81）也留在边距里面"],
         "the word setter refuses": ["set_typed_words()", "退出码不是 0", "不写成图", "5% 写死在代码里"],
@@ -3053,3 +3053,44 @@ def _issue_100e_failures(skill_root, skill_text):
 def test_easel_issue_100_emojis_are_drawn_by_the_image_model_in_ios_style():
     failures = _issue_100e_failures(SKILL_DIR, _text(SKILL_DIR / "SKILL.md"))
     assert not failures, "\n".join(failures)
+
+
+# issue 140: every pick offers four options, A to D; the pages the team looks at are a two-by-two grid (田字格) by default,
+# one row with --row, except a finished set of five or more cards (always one row). The page behaviour is tested in
+# tests/test_xhs_plan_page.py. Same assertions as wrapper.test.py beside the skill.
+ISSUE_140_TEXT = {
+    "SKILL.md": ["issue 140", "每个选择都是四个选项 A 到 D", "田字格", "--row", "五张或更多"],
+    "references/photo-scene-cover-versions.md": ["田字格", "--row", "cover-D", "标着 A、B、C、D"],
+    "references/photo-scene-set-page.md": ["田字格", "--row", "五张或更多", "一行"],
+}
+ISSUE_140_STALE = ("三个封面", "三个方向", "不足三套", "三套不同", "没选的两张", "凑不出三个", "先画三个", "留下三个",
+                   "三个封面版本")
+
+
+@pytest.mark.parametrize("rel", sorted(ISSUE_140_TEXT))
+def test_issue_140_the_skill_text_states_four_options_and_the_grid_layout(rel):
+    text = _text(SKILL_DIR / rel)
+    for need in ISSUE_140_TEXT[rel]:
+        assert need in text, f"{rel} does not say: {need}"
+
+
+def test_issue_140_no_cover_pick_text_still_says_three_covers():
+    names = ["SKILL.md", *sorted(p.name for p in (SKILL_DIR / "references").glob("photo-scene-*.md"))]
+    for name in names:
+        path = SKILL_DIR / name if name == "SKILL.md" else SKILL_DIR / "references" / name
+        text = _text(path)
+        for stale in ISSUE_140_STALE:
+            assert stale not in text, f"{name} still says: {stale}"
+        assert not re.search(r"A、B、C(?!、D)", text), f"{name} still lists the covers as A、B、C"
+
+
+def test_issue_140_plan_page_script_text_has_four_directions_and_no_three_cover_wording():
+    text = _text(SKILL_DIR / "scripts" / "plan_page.py")
+    assert 'DIRECTION_LETTERS = ["A", "B", "C", "D"]' in text
+    for stale in ("不足三套", "三个方向"):
+        assert stale not in text, stale
+    assert not re.search(r"cover-A/B/C(?!/D)", text)
+
+
+def test_issue_140_skill_md_stays_within_200_lines():
+    assert len(_text(SKILL_DIR / "SKILL.md").splitlines()) <= 200
